@@ -125,7 +125,7 @@ Setup, once:
 2. Create an API key at <https://platform.claude.com/> and store it as a function secret (never in the page):
 
    ```bash
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set ANTHROPIC_API_KEY_APPAREL=sk-ant-...
    ```
 
 3. Deploy the function (and re-deploy whenever its `index.ts` changes):

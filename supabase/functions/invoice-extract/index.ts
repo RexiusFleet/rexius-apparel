@@ -23,7 +23,7 @@
 // suggestion for the person to confirm on the review screen. Nothing is
 // written to the database here — the page does that after review.
 //
-// Secrets: ANTHROPIC_API_KEY (set with `supabase secrets set`), plus the
+// Secrets: ANTHROPIC_API_KEY_APPAREL (set with `supabase secrets set`), plus the
 // SUPABASE_* variables Supabase injects. Deployed with gateway JWT
 // verification off (supabase/config.toml); the function verifies the token
 // itself and requires an active admin.
@@ -40,7 +40,7 @@ import { z } from "npm:zod@3.25.76";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const ANTHROPIC_API_KEY_APPAREL = Deno.env.get("ANTHROPIC_API_KEY_APPAREL") ?? "";
 
 const BUCKET = "apparel-invoices";
 const MODEL = "claude-opus-5-5";
@@ -191,7 +191,7 @@ async function extract(admin: SupabaseClient, invoiceId: string) {
   if (itErr) throw new HttpError(500, `Couldn't load items: ${itErr.message}`);
   if (alErr) throw new HttpError(500, `Couldn't load vendor matches: ${alErr.message}`);
 
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY_APPAREL });
   const response = await client.messages.parse({
     model: MODEL,
     max_tokens: 16000,
@@ -243,7 +243,7 @@ Deno.serve(async (req: Request) => {
     if (origin && !ALLOWED_ORIGINS.has(origin)) throw new HttpError(403, "Origin not allowed.");
     if (req.method !== "POST") throw new HttpError(405, "Use POST.");
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) throw new HttpError(500, "Function is missing its SUPABASE_* environment variables.");
-    if (!ANTHROPIC_API_KEY) throw new HttpError(500, "ANTHROPIC_API_KEY isn't set. Add it with: supabase secrets set ANTHROPIC_API_KEY=...");
+    if (!ANTHROPIC_API_KEY_APPAREL) throw new HttpError(500, "ANTHROPIC_API_KEY_APPAREL isn't set. Add it with: supabase secrets set ANTHROPIC_API_KEY_APPAREL=...");
 
     let body: Record<string, unknown>;
     try { body = (await req.json()) as Record<string, unknown>; } catch { throw new HttpError(400, "Body must be JSON."); }

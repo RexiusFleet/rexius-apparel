@@ -11,5 +11,5 @@ verify_jwt = false
 
 [functions.invoice-extract]
 # Same arrangement as admin-users: the function verifies the caller's JWT
-# itself and requires an active admin. Needs the ANTHROPIC_API_KEY secret.
+# itself and requires an active admin. Needs the ANTHROPIC_API_KEY_APPAREL secret.
 verify_jwt = false
