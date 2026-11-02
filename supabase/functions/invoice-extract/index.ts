@@ -31,7 +31,7 @@
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.45.4";
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@1.3.0/helpers/zod";
-import { z } from "npm:zod@3.25.76";
+import { z } from "npm:zod@3.25.76/v4";
 import { aliasKey, normKey, spreadAddOns } from "./spread.ts";
 
 // ---------------------------------------------------------------------------
@@ -270,6 +270,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: `Claude API error (${e.status}): ${e.message}` }, 502, origin);
     }
     console.error("invoice-extract unexpected error", e);
-    return json({ error: "Unexpected error. Check the function logs." }, 500, origin);
+    return json({ error: `Unexpected error (${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}). This is only shown to signed-in admins.` }, 500, origin);
   }
 });
