@@ -811,6 +811,8 @@ $("rcvInvoice").addEventListener("change", () => { $("rcvNewInvoice").style.disp
    ========================================================= */
 const INVOICE_EXTRACT_URL = `${SUPABASE_URL}/functions/v1/invoice-extract`;
 const normKey = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+// Same rule as aliasKey in supabase/functions/invoice-extract/spread.ts: a part number alone can cover every size and colour, so both are part of the key.
+const aliasKey = (sku, desc, color, size) => { const base = normKey(sku) || normKey(desc); return base ? [base, normKey(color), normKey(size)].filter(Boolean).join(" | ") : ""; };
 async function callFunction(url, payload, name) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error("You're signed out. Sign in again.");
@@ -856,7 +858,8 @@ async function readInvoice(inv) {
   S.ai = {
     invoice: inv,
     header: { vendor: vendorGuess, invoice_no: res.header.invoice_no || "", invoice_date: res.header.invoice_date || "", total: res.header.total ?? "" },
-    lines: (res.lines || []).map((l) => ({ ...l, qty: Math.max(0, Math.round(Number(l.qty) || 0)), unit_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), item_id: l.item_id || "", skip: false, remember: l.match !== "alias" })),
+    lines: (res.lines || []).map((l) => ({ ...l, qty: Math.max(0, Math.round(Number(l.qty) || 0)), unit_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), landed_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), base_cost: l.base_unit_cost == null ? "" : Number(l.base_unit_cost).toFixed(2), item_id: l.item_id || "", skip: false, remember: l.match !== "alias" })),
+    spread: res.spread ? { ...res.spread, on: true } : null,
     other_charges: res.other_charges || [], notes: res.notes || ""
   };
   renderAiReview();
@@ -866,7 +869,7 @@ function renderAiReview() {
   const itemOpts = (sel) => `<option value="">— choose an item —</option>` + S.items.filter((i) => i.active || i.id === sel).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(itemLabel(i))}${i.sku ? " · " + esc(i.sku) : ""}</option>`).join("");
   const pill = (l) => l.match === "alias" ? `<span class="pill known">Known match</span>` : l.item_id ? `<span class="pill suggested">Suggested${l.confidence && l.confidence !== "high" ? " · " + l.confidence : ""}</span>` : `<span class="pill unmatched">Needs an item</span>`;
   const rows = a.lines.map((l, i) => `<tr class="${l.skip ? "skipped" : ""}" data-row="${i}">
-      <td>${esc(l.description)}${l.vendor_sku ? `<div class="meta">SKU ${esc(l.vendor_sku)}</div>` : ""}${l.note ? `<div class="meta">${esc(l.note)}</div>` : ""}${l.line_total != null ? `<div class="meta">Line total ${money(l.line_total)}</div>` : ""}</td>
+      <td>${esc(l.description)}${l.color || l.size ? `<div class="meta">${esc([l.color, l.size && "Size " + l.size].filter(Boolean).join(" · "))}</div>` : ""}${l.vendor_sku ? `<div class="meta">SKU ${esc(l.vendor_sku)}</div>` : ""}${a.spread?.on && l.base_cost !== "" ? `<div class="meta">${money(l.base_cost)} invoice price + ${money(a.spread.per_unit)} decoration and set-up</div>` : ""}${l.note ? `<div class="meta">${esc(l.note)}</div>` : ""}${l.line_total != null ? `<div class="meta">Line total ${money(l.line_total)}</div>` : ""}</td>
       <td><input type="number" min="1" inputmode="numeric" value="${l.qty}" data-i="${i}" data-f="qty"></td>
       <td><input type="number" min="0" step="0.01" inputmode="decimal" value="${esc(l.unit_cost)}" data-i="${i}" data-f="unit_cost"></td>
       <td><select data-i="${i}" data-f="item_id">${itemOpts(l.item_id)}</select><div style="margin-top:4px">${pill(l)}</div></td>
@@ -884,14 +887,20 @@ function renderAiReview() {
       <div class="field narrow"><label for="aiHTotal">Invoice total</label><input id="aiHTotal" type="number" min="0" step="0.01" inputmode="decimal" value="${a.header.total === "" || a.header.total == null ? "" : Number(a.header.total).toFixed(2)}"></div>
     </div>
     ${a.notes ? `<p class="hint">${esc(a.notes)}</p>` : ""}
+    ${a.spread ? `<div class="hint" style="margin:8px 0"><label class="check"><input type="checkbox" id="aiSpread" ${a.spread.on ? "checked" : ""}><strong>Spread decoration and set-up fees across the items</strong></label><br>${esc(a.spread.charges.map((c) => c.description + " " + money(c.amount)).join(" · "))} = ${money(a.spread.total)} over ${a.spread.units} pieces, ${money(a.spread.per_unit)} each, added to every line's unit cost. Untick to receive at the invoice prices instead.</div>` : ""}
     <div class="table-wrap"><table class="review"><thead><tr><th>Invoice line</th><th>Qty</th><th>Unit cost</th><th>Our item</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No product lines were found on this document.</td></tr>`}</tbody></table></div>
     ${charges}
-    <p class="hint">${active.length} line${active.length === 1 ? "" : "s"} to receive · product total ${money(sum)}${a.header.total !== "" && a.header.total != null ? ` · invoice total ${money(a.header.total)}` : ""}. "Remember" saves the item you chose as the match for that vendor line next time.</p>
+    <p class="hint">${active.length} line${active.length === 1 ? "" : "s"} to receive · product total ${money(sum)}${a.header.total !== "" && a.header.total != null ? ` · invoice total ${money(a.header.total)}` : ""}${a.spread?.on && a.header.total !== "" && a.header.total != null && Math.abs(sum - Number(a.header.total)) >= 0.005 && Math.abs(sum - Number(a.header.total)) < 1 ? " (a few cents apart because each cost is rounded to the cent)" : ""}. "Remember" saves the item you chose as the match for that vendor line next time.</p>
     <div class="btn-row"><button class="btn primary big" id="aiConfirm" ${active.length ? "" : "disabled"}>Add ${active.length} line${active.length === 1 ? "" : "s"} to inventory</button><button class="btn" id="aiCancel">Cancel</button></div>`;
   $("aiConfirm").addEventListener("click", confirmAiReceive);
   $("aiCancel").addEventListener("click", () => { if (confirm("Discard this review? The invoice file stays saved under Admin → Invoices.")) { S.ai = null; $("aiReview").style.display = "none"; $("aiReview").innerHTML = ""; } });
 }
 $("aiReview").addEventListener("change", (e) => {
+  if (e.target.id === "aiSpread" && S.ai?.spread) {
+    syncAiHeader(); S.ai.spread.on = e.target.checked;
+    S.ai.lines.forEach((l) => { const c = S.ai.spread.on ? l.landed_cost : l.base_cost; if (c !== "") l.unit_cost = c; });
+    return renderAiReview();
+  }
   const el = e.target.closest("[data-i]"); if (!el || !S.ai) return;
   const l = S.ai.lines[Number(el.dataset.i)], f = el.dataset.f;
   if (f === "skip" || f === "remember") l[f] = el.checked;
@@ -923,12 +932,12 @@ async function confirmAiReceive() {
   const hdr = { vendor, invoice_no: a.header.invoice_no.trim() || null, invoice_date: a.header.invoice_date || null, total: totalRaw === "" ? null : Number(totalRaw) };
   const up = await sb.from("invoices").update(hdr).eq("id", a.invoice.id);
   if (up.error) { btn.disabled = false; return fail(up.error, "Couldn't save the invoice details"); }
-  const rows = lines.map((l) => ({ type: "receive", item_id: l.item_id, qty_change: parseInt(l.qty), unit_cost: String(l.unit_cost).trim() === "" ? null : Number(l.unit_cost), performed_by: S.session.user.id, invoice_id: a.invoice.id, notes: `Invoice line: ${l.description}`.slice(0, 200) }));
+  const rows = lines.map((l) => ({ type: "receive", item_id: l.item_id, qty_change: parseInt(l.qty), unit_cost: String(l.unit_cost).trim() === "" ? null : Number(l.unit_cost), performed_by: S.session.user.id, invoice_id: a.invoice.id, notes: `Invoice line: ${l.description}${l.size ? " " + l.size : ""}${a.spread?.on && l.base_cost !== "" ? " (cost includes decoration and set-up)" : ""}`.slice(0, 200) }));
   const ins = await sb.from("transactions").insert(rows);
   if (ins.error) { btn.disabled = false; return fail(ins.error, "Couldn't add the stock"); }
   const aliasRows = lines.filter((l) => l.remember && l.item_id).map((l) => ({
     vendor, vendor_key: normKey(vendor), vendor_sku: l.vendor_sku || null, description: l.description || null,
-    alias_key: normKey(l.vendor_sku) || normKey(l.description), item_id: l.item_id, created_by: S.session.user.id, updated_at: new Date().toISOString()
+    alias_key: aliasKey(l.vendor_sku, l.description, l.color, l.size), item_id: l.item_id, created_by: S.session.user.id, updated_at: new Date().toISOString()
   })).filter((r) => r.alias_key);
   const seen = new Set(); const uniq = aliasRows.filter((r) => !seen.has(r.alias_key) && seen.add(r.alias_key));
   if (uniq.length) { const al = await sb.from("vendor_aliases").upsert(uniq, { onConflict: "vendor_key,alias_key" }); if (al.error) console.warn("Couldn't save vendor matches", al.error); }

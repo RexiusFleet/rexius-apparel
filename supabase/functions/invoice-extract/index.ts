@@ -32,6 +32,7 @@ import { createClient, type SupabaseClient, type User } from "npm:@supabase/supa
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@1.3.0/helpers/zod";
 import { z } from "npm:zod@3.25.76";
+import { aliasKey, normKey, spreadAddOns } from "./spread.ts";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -77,11 +78,6 @@ function json(body: unknown, status: number, origin: string | null): Response {
   });
 }
 
-/** Same normalization the page uses: lower-case, single spaces, trimmed. */
-export function normKey(s: string | null | undefined): string {
-  return (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
 const noSession = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
 const adminOpts = { ...noSession, db: { schema: "apparel" } };
 
@@ -114,6 +110,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 const Line = z.object({
   description: z.string().describe("The line's description exactly as printed, trimmed."),
   vendor_sku: z.string().nullable().describe("The vendor's SKU / item / part number for the line, exactly as printed, or null if the invoice shows none."),
+  color: z.string().nullable().describe("The garment colour as printed (e.g. Safety Green), or null."),
+  size: z.string().nullable().describe("The garment size for THIS entry (S, M, LG, XL, 2X, 3X, Youth M, etc.), or null if the line has no size."),
   qty: z.number().describe("Number of individual units received. If the invoice bills by pack or case and shows the pack size, multiply out to units and say so in note."),
   unit_cost: z.number().nullable().describe("Cost per individual unit after any line-level discount, excluding tax and freight. Null if it truly cannot be determined."),
   line_total: z.number().nullable().describe("Extended total for the line as printed, or null."),
@@ -128,8 +126,13 @@ const Extraction = z.object({
   invoice_date: z.string().nullable().describe("YYYY-MM-DD, or null."),
   subtotal: z.number().nullable(),
   total: z.number().nullable().describe("Grand total due as printed."),
-  lines: z.array(Line).describe("One entry per PRODUCT line. Do not include freight, shipping, tax, discounts, deposits or payment lines here."),
-  other_charges: z.array(z.object({ description: z.string(), amount: z.number() })).describe("Freight, shipping, handling, tax and other non-product amounts."),
+  lines: z.array(Line).describe("One entry per garment/product and size. Do not include decoration, set-up, freight, shipping, tax, discounts, deposits or payment lines here."),
+  add_on_charges: z.array(z.object({
+    description: z.string().describe("The charge's description as printed."),
+    kind: z.enum(["decoration", "setup"]).describe("decoration = embroidery, screen printing, logo, patch, heat transfer or digitizing charged per piece or per job. setup = screen, set-up, art, digitizing or reorder fees."),
+    amount: z.number().describe("The EXTENDED total printed for the charge (the Total Price column), not the per-piece rate."),
+  })).describe("Decoration and set-up charges that are billed as their own lines. They are not stock items."),
+  other_charges: z.array(z.object({ description: z.string(), amount: z.number() })).describe("Freight, shipping, handling, tax and any other non-product amounts that are NOT decoration or set-up charges."),
   notes: z.string().nullable().describe("General remarks about the document (poor scan, multiple pages, credit memo, etc.)."),
 });
 type ExtractionT = z.infer<typeof Extraction>;
@@ -148,6 +151,9 @@ function systemPrompt(items: Item[]): string {
     "- Quantities are individual units. If a line is priced per pack/case/dozen and the pack size is shown, convert to units and per-unit cost and explain in note. If the pack size is not shown, leave qty as printed and flag it in note.",
     "- unit_cost is per unit after line discounts, before tax/freight. Use the extended total divided by units when the printed unit price disagrees with the extension.",
     "- Match each line to a catalog item only when product AND size clearly agree. Vendor wording differs from ours (abbreviations, part numbers, colour codes); use judgement on the product but never on the size. If the size on the invoice is not in the catalog, item_id is null and note says which size.",
+    "- Size grids: some invoices print one row per garment with a grid of size columns and the quantity under the size. Return one entry per size that has a quantity, with that size in `size`, the colour in `color`, and the same unit cost. If a grid has both Youth and Adult sizes and you cannot tell which the quantity sits under, assume Adult unless the description says youth, and say so in note.",
+    "- Decoration and set-up: embroidery, screen printing, logos, patches, digitizing, screen or set-up fees and reorder fees are not products. Put them in add_on_charges with the printed extended total, never in lines. Do not spread or allocate them yourself, the app does that.",
+    "- Freight, shipping, handling and tax go in other_charges.",
     "- Dates are YYYY-MM-DD.",
     "- If the document is not an invoice (packing slip, quote, statement), still extract what you can and say so in notes.",
     "",
@@ -218,17 +224,19 @@ async function extract(admin: SupabaseClient, invoiceId: string) {
   for (const a of (aliases ?? []) as Alias[]) aliasMap.set(`${a.vendor_key}\u0000${a.alias_key}`, a.item_id);
   const lookup = (vk: string, key: string) => (key ? aliasMap.get(`${vk}\u0000${key}`) : undefined);
 
-  const lines = parsed.lines.map((l) => {
-    const skuKey = normKey(l.vendor_sku), descKey = normKey(l.description);
-    const aliasHit = lookup(vendorKey, skuKey) ?? lookup(vendorKey, descKey) ?? lookup(normKey(inv.vendor), skuKey) ?? lookup(normKey(inv.vendor), descKey);
+  const matched = parsed.lines.map((l) => {
+    const bySku = aliasKey(l.vendor_sku, null, l.color, l.size), byDesc = aliasKey(null, l.description, l.color, l.size);
+    const aliasHit = lookup(vendorKey, bySku) ?? lookup(vendorKey, byDesc) ?? lookup(normKey(inv.vendor), bySku) ?? lookup(normKey(inv.vendor), byDesc);
     if (aliasHit && itemIds.has(aliasHit)) return { ...l, item_id: aliasHit, match: "alias" as const, confidence: "high" as const };
     const suggested = l.item_id && itemIds.has(l.item_id) ? l.item_id : null;
     return { ...l, item_id: suggested, match: suggested ? ("suggested" as const) : ("none" as const), confidence: suggested ? l.confidence : ("none" as const) };
   });
+  const { spread, lines } = spreadAddOns(matched, parsed.add_on_charges ?? []);
 
   return {
     header: { vendor: parsed.vendor, invoice_no: parsed.invoice_no, invoice_date: parsed.invoice_date, subtotal: parsed.subtotal, total: parsed.total },
     lines,
+    spread,
     other_charges: parsed.other_charges,
     notes: parsed.notes,
     usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens, model: response.model },
