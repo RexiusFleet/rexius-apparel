@@ -17,6 +17,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261027170000_move_to_apparel_schema.sql` — **current layout**: everything lives in its own `apparel` schema (`apparel.items`, `apparel.transactions`, …). Run once after an admin has exposed the `apparel` schema under Project Settings → Data API. Older scripts are kept in `sql_history/` for reference only.
 - `supabase/migrations/20261029100000_seed_highvis_items.sql` — the starting product list (short-sleeve tee, long-sleeve tee, sweatshirt and safety vest in S–4XL, plus a one-size ball cap: 29 items), built from the "High-Vis Product Info" sheet. Run once, the same way; safe to re-run after the sheet changes, and it renames the original HV-TS-* tee SKUs in place if they were loaded earlier.
 - `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
+- `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script.
 - `testing/` — `test-invoice.pdf`, a sample invoice from a made-up vendor for trying invoice reading in test mode, and `make_test_invoice.py`, which rebuilds it (`python3 testing/make_test_invoice.py`). Deploy this folder alongside `index.html`; the app links to the PDF.
 - `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic invoice reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
@@ -142,31 +143,32 @@ The function uses Claude Opus 5.5 and typically costs a few cents per invoice. O
 
 ## Test product and test mode
 
-For trying the app out, or checking a new feature, without touching real numbers. Test items are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show under **Admin → Items**, with a *Test* tag. The starting one is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too.
+For trying the app out, or checking a new feature, without touching real numbers or real people. Test items, employees and departments are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show in the Admin lists (Items, Employees, Departments), with a *Test* tag. The starting set is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too, and **Test Employee**, whose home department is **Test Department** (code `TEST`).
 
-**Admin → Items → Turn on test mode** switches every screen over to the test items, and only them, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
+**Admin → Items → Turn on test mode** switches every screen over to test data, and only test data, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
 
 - **Receive** lists only test items. Invoices uploaded are saved as test invoices, and *Receive from an invoice* matches lines to test items only. Try it with the sample test invoice (`testing/test-invoice.pdf`, linked from the test mode panel and the Receive tab). It should come back as three lines (S 4, M 6, L 2) at $12.50 each: $10.00 plus $2.50 of screen print and set-up spread over the 12 pieces, with $9.50 freight listed as not received. Reading it costs a few cents, like any invoice.
 - **Print labels** lists only test items, so you can print a test QR label and scan it on **Check out**.
 - **Inventory**, **Recent activity**, **Reports** and **Admin → Invoices** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
-- Checkouts still need a real employee and department. The transaction counts as a test one because its item is a test item.
+- **Check out** offers only test employees and test departments, so a test checkout touches nothing real: Test Product to Test Employee, charged to Test Department.
 
-Outside test mode, real reports, inventory totals and low-stock counts never include test items, and checkout users never see them (scanning a test label tells them it is a test label).
+Outside test mode, real reports, inventory totals and low-stock counts never include test data. The pick lists, employee search and department dropdowns (including the Reports department filter) never offer test records, and checkout users never see them (scanning a test label tells them it is a test label).
 
-**Clear test activity** (Admin → Items) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Real data is not touched.
+**Anything you add while test mode is on is a test record**: items (including one item per size), employees (including a new employee added from the check out screen), departments and invoices. Anything added outside test mode is real. The flag is only set when a record is created, so a real item, employee or department with history can never be hidden from reports later.
 
-To add more test items, tick **Test item** when adding an item (or one item per size). It can only be set when an item is created, so an item with real history can never be hidden from reports later.
+**Clear test activity** (Admin → Items) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
 
 Setup, once, in this order:
 
-1. Run `supabase/migrations/20261102120000_test_product.sql` in the SQL Editor (adds the test flags and the Test Product).
-2. Redeploy the invoice reader, which now keeps test and real items apart:
+1. Run `supabase/migrations/20261102120000_test_product.sql` in the SQL Editor (adds the test flags for items and invoices, and the Test Product).
+2. Run `supabase/migrations/20261102180000_test_employee_department.sql` the same way (adds the test flags for employees and departments, and Test Employee and Test Department).
+3. Redeploy the invoice reader, which keeps test and real items apart:
 
    ```bash
    supabase functions deploy invoice-extract --no-verify-jwt
    ```
 
-3. Push `index.html` and `testing/` to `main`.
+4. Push `index.html` and `testing/` to `main`.
 
 ## Day to day
 

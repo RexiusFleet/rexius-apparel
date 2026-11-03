@@ -275,7 +275,7 @@ tr.low td { background: var(--orange-soft); }
     <button data-view="reports" id="reportsTab" style="display:none">Reports</button>
     <button data-view="admin" id="adminTab" style="display:none">Admin</button>
   </nav>
-  <div class="test-banner" id="testBanner" style="display:none"><span><strong>Test mode.</strong> Only test items are shown, and nothing here counts toward real inventory or chargebacks.</span><button class="btn small" id="testOffBtn">Turn off</button></div>
+  <div class="test-banner" id="testBanner" style="display:none"><span><strong>Test mode.</strong> Only test data is shown, and nothing here counts toward real inventory or chargebacks.</span><button class="btn small" id="testOffBtn">Turn off</button></div>
 
   <main>
     <!-- ---------- CHECKOUT ---------- -->
@@ -406,7 +406,7 @@ tr.low td { background: var(--orange-soft); }
       <div class="subview active" id="sub-items">
         <div class="panel">
           <h3>Test mode</h3>
-          <p class="hint">Test items (marked <span class="pill test">Test</span> below) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to the test items only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
+          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
           <p class="hint" id="testSummary"></p>
           <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
         </div>
@@ -529,9 +529,9 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const itemLabel = (it) => `${it.name}${it.size ? " – " + it.size : ""}`;
 const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const isAdmin = () => S.role === "admin";
-// Test items (items.is_test) show only in test mode, and in test mode nothing else does. Admin → Items always lists both.
-const inScope = (itemId) => S.testIds.has(itemId) === S.testMode;
-const invoiceInScope = (v) => !!v.is_test === S.testMode;
+// Test records (is_test on items, employees, departments and invoices) show only in test mode, and in test mode nothing else does. The Admin lists show both.
+const inScope = (itemId) => S.testIds.has(itemId) === S.testMode;   // by id, because inventory rows don't carry the flag
+const rowInScope = (row) => !!row.is_test === S.testMode;
 const TEST_MODE_KEY = "apparel.testMode";
 
 let toastTimer;
@@ -734,7 +734,7 @@ $("cartLines").addEventListener("change", (e) => {
 // employee picker
 function filterEmployees(q) {
   q = q.trim().toLowerCase();
-  return S.employees.filter((e) => e.active && (!q || e.full_name.toLowerCase().includes(q)));
+  return S.employees.filter((e) => e.active && rowInScope(e) && (!q || e.full_name.toLowerCase().includes(q)));
 }
 $("empSearch").addEventListener("input", (e) => {
   const list = filterEmployees(e.target.value).slice(0, 40);
@@ -752,7 +752,7 @@ $("empSearch").addEventListener("input", (e) => {
   }
 });
 function openQuickAddEmployee(name) {
-  const deptOpts = S.departments.filter((d) => d.active).map((d) => `<option value="${d.id}" ${d.id === $("deptSelect").value ? "selected" : ""}>${esc(d.name)}</option>`).join("");
+  const deptOpts = S.departments.filter((d) => d.active && rowInScope(d)).map((d) => `<option value="${d.id}" ${d.id === $("deptSelect").value ? "selected" : ""}>${esc(d.name)}</option>`).join("");
   openModal(`<h2>New employee</h2><p class="hint">Check the list first — if they're already in it under a slightly different name, pick that instead so their history stays in one place.</p>
     <div class="field"><label for="qName">Full name</label><input id="qName" value="${esc(name)}"></div>
     <div class="field"><label for="qDept">Home department</label><select id="qDept"><option value="">Choose</option>${deptOpts}</select></div>
@@ -761,9 +761,10 @@ function openQuickAddEmployee(name) {
   $("qSave").addEventListener("click", async () => {
     const full_name = $("qName").value.trim(), department_id = $("qDept").value || null;
     if (!full_name) return toast("A name is required.", true);
-    const dupe = S.employees.find((x) => x.full_name.trim().toLowerCase() === full_name.toLowerCase());
+    const dupe = S.employees.find((x) => rowInScope(x) && x.full_name.trim().toLowerCase() === full_name.toLowerCase());
     if (dupe) { closeModal(); chooseEmployee(dupe); return toast(`${dupe.full_name} is already in the list — selected them.`); }
-    const { data, error } = await sb.from("employees").insert({ full_name, department_id }).select("*, department:departments(name)").single();
+    const row = { full_name, department_id }; if (S.testMode) row.is_test = true;
+    const { data, error } = await sb.from("employees").insert(row).select("*, department:departments(name)").single();
     if (error) return fail(error, error.code === "42501" ? "Adding employees isn't enabled yet (run the policy SQL)" : "Couldn't add employee");
     S.employees.push(data); S.employees.sort((a, b) => a.full_name.localeCompare(b.full_name));
     closeModal(); chooseEmployee(data); toast(`Added ${full_name}`);
@@ -780,7 +781,7 @@ function chooseEmployee(emp) {
 $("deptSelect").addEventListener("change", renderCart);
 
 function renderDeptSelects() {
-  const opts = (blank) => (blank ? `<option value="">${blank}</option>` : "") + S.departments.filter((d) => d.active).map((d) => `<option value="${d.id}">${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}</option>`).join("");
+  const opts = (blank) => (blank ? `<option value="">${blank}</option>` : "") + S.departments.filter((d) => d.active && rowInScope(d)).map((d) => `<option value="${d.id}">${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}</option>`).join("");
   $("deptSelect").innerHTML = opts("Choose a department");
   $("empDept").innerHTML = opts("None");
 }
@@ -854,7 +855,7 @@ async function callFunction(url, payload, name) {
 }
 function aiStatus(msg) { const el = $("aiStatus"); el.style.display = msg ? "" : "none"; el.textContent = msg || ""; }
 function renderVendorList() {
-  const names = [...new Set([...S.invoices.filter(invoiceInScope).map((v) => v.vendor), ...S.aliases.filter((a) => inScope(a.item_id)).map((a) => a.vendor)])].filter(Boolean).sort();
+  const names = [...new Set([...S.invoices.filter(rowInScope).map((v) => v.vendor), ...S.aliases.filter((a) => inScope(a.item_id)).map((a) => a.vendor)])].filter(Boolean).sort();
   $("vendorList").innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
 }
 $("aiReadBtn").addEventListener("click", async () => {
@@ -1013,7 +1014,7 @@ async function loadInvoices() {
 }
 function renderInvoiceSelect() {
   const sel = $("rcvInvoice"), cur = sel.value;
-  const recent = S.invoices.filter(invoiceInScope).slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
+  const recent = S.invoices.filter(rowInScope).slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
   sel.innerHTML = `<option value="">No invoice</option><option value="__new">Attach a new invoice…</option>${recent}`;
   sel.value = cur; if (sel.value !== cur) sel.value = "";
 }
@@ -1057,7 +1058,7 @@ $("invoicesSearch").addEventListener("input", renderInvoices);
 function renderInvoices() {
   const q = $("invoicesSearch").value.trim().toLowerCase();
   const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid === S.session.user.id ? (S.me.display_name || "you") : "—");
-  const scoped = S.invoices.filter(invoiceInScope);
+  const scoped = S.invoices.filter(rowInScope);
   const rows = scoped.filter((v) => !q || `${v.vendor} ${v.invoice_no || ""} ${v.notes || ""} ${v.file_name}`.toLowerCase().includes(q));
   const tb = $("invoicesTable").querySelector("tbody");
   tb.innerHTML = rows.length ? rows.map((v) => `<tr><td>${esc(fmtDate(v.invoice_date))}</td><td>${esc(v.vendor)}</td><td>${esc(v.invoice_no || "")}</td><td class="num">${v.total == null ? "" : money(v.total)}</td><td class="num">${v.line_count}</td><td>${esc(byName(v.uploaded_by))}</td><td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button><button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`).join("")
@@ -1121,7 +1122,7 @@ function renderInventory() {
   rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || String(a.size || "").localeCompare(String(b.size || "")));
   const tb = $("invTable").querySelector("tbody");
   tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(i.name)}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items with “Test item” ticked." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
+    : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => { const b = e.target.closest("[data-adjust]"); if (b) openAdjust(b.dataset.adjust); });
 function openAdjust(id) {
@@ -1179,7 +1180,7 @@ function setRange(kind) {
 document.querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => { setRange(b.dataset.range); runReport(); }));
 function populateReportDepts() {
   const cur = $("repDept").value;
-  $("repDept").innerHTML = `<option value="">All</option>` + S.departments.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join(""); $("repDept").value = cur;
+  $("repDept").innerHTML = `<option value="">All</option>` + S.departments.filter(rowInScope).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join(""); $("repDept").value = cur;
 }
 $("runReportBtn").addEventListener("click", runReport);
 async function runReport() {
@@ -1249,28 +1250,31 @@ async function deleteRecord(kind, id) {
 
 /* =========================================================
    TEST MODE (admin only)
-   Test items and test invoices are kept apart from real ones: in test
-   mode every screen shows only them, and outside it they are hidden.
+   Test items, employees, departments and invoices are kept apart from
+   real ones: in test mode every screen shows only them, and outside it
+   they are hidden. Anything added while test mode is on is a test record.
    ========================================================= */
 function renderTestMode() {
   $("testBanner").style.display = S.testMode ? "" : "none";
   $("aiTestHint").style.display = S.testMode ? "" : "none";
   $("testToggleBtn").textContent = S.testMode ? "Turn off test mode" : "Turn on test mode";
-  const names = [...new Set(S.items.filter((i) => S.testIds.has(i.id)).map((i) => i.name))];
-  $("testSummary").textContent = names.length ? `Test items: ${names.join(", ")} (${S.testIds.size} in all).` : "No test items yet. Add one below with “Test item” ticked.";
+  const items = [...new Set(S.items.filter((i) => S.testIds.has(i.id)).map((i) => i.name))];
+  const emps = S.employees.filter((e) => e.is_test).map((e) => e.full_name), depts = S.departments.filter((d) => d.is_test).map((d) => d.name);
+  $("testSummary").textContent = `Test items: ${items.length ? `${items.join(", ")} (${S.testIds.size} in all)` : "none yet"}. Test employees: ${emps.join(", ") || "none yet"}. Test departments: ${depts.join(", ") || "none yet"}.`;
 }
 async function setTestMode(on) {
   S.testMode = on && isAdmin();
   try { if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
-  // Nothing carries over, so a cart, half-done receive or report from one side can't be finished on the other.
-  S.cart = []; S.rcvItem = null; S.ai = null; S.report = null;
-  $("pickArea").style.display = "none"; $("rcvList").style.display = "none";
+  // Nothing carries over, so a cart, chosen employee, half-done receive or report from one side can't be finished on the other.
+  S.cart = []; S.cartEmployee = null; S.rcvItem = null; S.ai = null; S.report = null;
+  $("pickArea").style.display = "none"; $("rcvList").style.display = "none"; $("empList").style.display = "none";
+  $("empSearch").value = ""; $("empChosen").textContent = "";
   $("rcvSearch").value = ""; $("rcvChosen").textContent = ""; $("rcvCost").value = ""; $("confirmReceiveBtn").disabled = true;
   $("aiReview").style.display = "none"; $("aiReview").innerHTML = "";
   $("reportOut").innerHTML = `<div class="empty">Choose a date range and run the report.</div>`; $("csvBtn").disabled = true;
-  await loadRefs();
+  await loadRefs(); populateReportDepts();
   if ($("view-inventory").classList.contains("active")) loadActivity();
-  toast(S.testMode ? "Test mode on: only test items are shown" : "Test mode off");
+  toast(S.testMode ? "Test mode on: only test data is shown" : "Test mode off");
 }
 $("testToggleBtn").addEventListener("click", () => setTestMode(!S.testMode));
 $("testOffBtn").addEventListener("click", () => setTestMode(false));
@@ -1307,7 +1311,6 @@ $("testClearBtn").addEventListener("click", async () => {
 /* =========================================================
    ADMIN: ITEMS
    ========================================================= */
-const testItemCheck = (id) => `<div class="field"><label class="check" style="white-space:normal"><input type="checkbox" id="${id}">Test item: only shows in test mode and is left out of every report</label></div>`;
 function renderAdminItems() {
   const tb = $("adminItemsTable").querySelector("tbody");
   tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
@@ -1327,13 +1330,13 @@ function openItemForm(it) {
     <datalist id="catList">${[...new Set(S.items.map((i) => i.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
     <div class="field"><label for="fSku">SKU (goes on the label)</label><input id="fSku" value="${esc(it?.sku || "")}" placeholder="HV-VEST-C2-L" style="text-transform:uppercase"></div>
     <div class="row"><div class="field narrow"><label for="fCost">Unit cost</label><input id="fCost" type="number" step="0.01" min="0" inputmode="decimal" value="${it ? Number(it.unit_cost).toFixed(2) : ""}"></div><div class="field narrow"><label for="fThr">Reorder when at or below</label><input id="fThr" type="number" min="0" inputmode="numeric" value="${it?.reorder_threshold ?? 5}"></div></div>
-    ${it ? (it.is_test ? `<p class="hint">This is a test item: it only shows in test mode and is left out of every report.</p>` : "") : testItemCheck("fTest")}
+    ${(it ? it.is_test : S.testMode) ? `<p class="hint">${it ? "This is a test item" : "Test mode is on, so this will be a test item"}: it only shows in test mode and is left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="fSave">${it ? "Save changes" : "Add item"}</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("fName").focus();
   $("fSave").addEventListener("click", async () => {
     const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, reorder_threshold: parseInt($("fThr").value) || 0 };
     if (!row.name || !row.sku) return toast("Name and SKU are required.", true);
-    if (!it && $("fTest").checked) row.is_test = true;   // set only when adding, so an item with real history can't be hidden from reports later
+    if (!it && S.testMode) row.is_test = true;   // set only when adding, so an item with real history can't be hidden from reports later
     const { error } = it ? await sb.from("items").update(row).eq("id", it.id) : await sb.from("items").insert(row);
     if (error) return fail(error, error.code === "23505" ? "That SKU is already in use" : "Couldn't save item");
     closeModal(); toast(it ? "Item saved" : "Item added"); await loadRefs();
@@ -1345,7 +1348,7 @@ $("bulkItemBtn").addEventListener("click", () => {
     <div class="row"><div class="field"><label for="bCat">Category</label><input id="bCat" placeholder="shirt"></div><div class="field"><label for="bPrefix">SKU prefix</label><input id="bPrefix" placeholder="HV-LS-C3" style="text-transform:uppercase"></div></div>
     <div class="field"><label for="bSizes">Sizes, comma separated</label><input id="bSizes" value="S, M, L, XL, 2XL, 3XL"></div>
     <div class="row"><div class="field narrow"><label for="bCost">Unit cost</label><input id="bCost" type="number" step="0.01" min="0" inputmode="decimal"></div><div class="field narrow"><label for="bThr">Reorder when at or below</label><input id="bThr" type="number" min="0" value="5"></div></div>
-    ${testItemCheck("bTest")}
+    ${S.testMode ? `<p class="hint">Test mode is on, so these will be test items: they only show in test mode and are left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="bSave">Add items</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("bName").focus();
   $("bSave").addEventListener("click", async () => {
@@ -1353,7 +1356,7 @@ $("bulkItemBtn").addEventListener("click", () => {
     const sizes = $("bSizes").value.split(",").map((s) => s.trim()).filter(Boolean);
     if (!name || !prefix || !sizes.length) return toast("Name, SKU prefix and at least one size are required.", true);
     const rows = sizes.map((sz) => ({ name, category: $("bCat").value.trim() || null, size: sz, sku: `${prefix}-${sz.replace(/\s+/g, "").toUpperCase()}`, unit_cost: Number($("bCost").value) || 0, reorder_threshold: parseInt($("bThr").value) || 0 }));
-    if ($("bTest").checked) rows.forEach((r) => (r.is_test = true));
+    if (S.testMode) rows.forEach((r) => (r.is_test = true));
     const { error } = await sb.from("items").insert(rows);
     if (error) return fail(error, error.code === "23505" ? "One of those SKUs already exists" : "Couldn't add items");
     closeModal(); toast(`Added ${rows.length} items`); await loadRefs();
@@ -1393,13 +1396,14 @@ $("printLabelsBtn").addEventListener("click", () => {
    ========================================================= */
 function renderDepts() {
   const tb = $("deptTable").querySelector("tbody");
-  tb.innerHTML = S.departments.length ? S.departments.map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.code || "")}</td><td><span class="pill ${d.active ? "ok" : "off"}">${d.active ? "Active" : "Inactive"}</span></td><td class="actions"><button class="btn small" data-dedit="${d.id}">Rename</button><button class="btn small" data-dtoggle="${d.id}">${d.active ? "Deactivate" : "Reactivate"}</button>${d.active ? "" : `<button class="btn small danger" data-ddelete="${d.id}">Delete</button>`}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No departments yet.</td></tr>`;
+  tb.innerHTML = S.departments.length ? S.departments.map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.code || "")}</td><td><span class="pill ${d.active ? "ok" : "off"}">${d.active ? "Active" : "Inactive"}</span>${d.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-dedit="${d.id}">Rename</button><button class="btn small" data-dtoggle="${d.id}">${d.active ? "Deactivate" : "Reactivate"}</button>${d.active ? "" : `<button class="btn small danger" data-ddelete="${d.id}">Delete</button>`}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No departments yet.</td></tr>`;
 }
 $("addDeptBtn").addEventListener("click", async () => {
   const name = $("deptName").value.trim(); if (!name) return toast("Enter a department name.", true);
-  const { error } = await sb.from("departments").insert({ name, code: $("deptCode").value.trim() || null });
+  const row = { name, code: $("deptCode").value.trim() || null }; if (S.testMode) row.is_test = true;
+  const { error } = await sb.from("departments").insert(row);
   if (error) return fail(error, error.code === "23505" ? "That department already exists" : "Couldn't add department");
-  $("deptName").value = ""; $("deptCode").value = ""; toast("Department added"); await loadRefs();
+  $("deptName").value = ""; $("deptCode").value = ""; toast(S.testMode ? "Test department added" : "Department added"); await loadRefs();
 });
 $("deptTable").addEventListener("click", async (e) => {
   const ed = e.target.closest("[data-dedit]"), tg = e.target.closest("[data-dtoggle]"), dl = e.target.closest("[data-ddelete]");
@@ -1416,13 +1420,14 @@ function renderEmployees() {
   const q = $("empAdminSearch").value.trim().toLowerCase();
   const rows = S.employees.filter((e) => !q || `${e.full_name} ${e.department?.name || ""}`.toLowerCase().includes(q));
   const tb = $("empTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((e) => `<tr><td>${esc(e.full_name)}</td><td>${esc(e.department?.name || "")}</td><td><span class="pill ${e.active ? "ok" : "off"}">${e.active ? "Active" : "Inactive"}</span></td><td class="actions"><button class="btn small" data-eedit="${e.id}">Edit</button><button class="btn small" data-etoggle="${e.id}">${e.active ? "Deactivate" : "Reactivate"}</button>${e.active ? "" : `<button class="btn small danger" data-edelete="${e.id}">Delete</button>`}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">${S.employees.length ? "No matches." : "No employees yet."}</td></tr>`;
+  tb.innerHTML = rows.length ? rows.map((e) => `<tr><td>${esc(e.full_name)}</td><td>${esc(e.department?.name || "")}</td><td><span class="pill ${e.active ? "ok" : "off"}">${e.active ? "Active" : "Inactive"}</span>${e.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-eedit="${e.id}">Edit</button><button class="btn small" data-etoggle="${e.id}">${e.active ? "Deactivate" : "Reactivate"}</button>${e.active ? "" : `<button class="btn small danger" data-edelete="${e.id}">Delete</button>`}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">${S.employees.length ? "No matches." : "No employees yet."}</td></tr>`;
 }
 $("addEmpBtn").addEventListener("click", async () => {
   const full_name = $("empName").value.trim(); if (!full_name) return toast("Enter the employee's name.", true);
-  const { error } = await sb.from("employees").insert({ full_name, department_id: $("empDept").value || null });
+  const row = { full_name, department_id: $("empDept").value || null }; if (S.testMode) row.is_test = true;
+  const { error } = await sb.from("employees").insert(row);
   if (error) return fail(error, "Couldn't add employee");
-  $("empName").value = ""; toast("Employee added"); await loadRefs(); $("empName").focus();
+  $("empName").value = ""; toast(S.testMode ? "Test employee added" : "Employee added"); await loadRefs(); $("empName").focus();
 });
 $("empTable").addEventListener("click", async (e) => {
   const ed = e.target.closest("[data-eedit]"), tg = e.target.closest("[data-etoggle]"), dl = e.target.closest("[data-edelete]");
@@ -1432,7 +1437,7 @@ $("empTable").addEventListener("click", async (e) => {
     const emp = S.employees.find((x) => x.id === ed.dataset.eedit);
     openModal(`<h2>Edit employee</h2>
       <div class="field"><label for="eName">Full name</label><input id="eName" value="${esc(emp.full_name)}"></div>
-      <div class="field"><label for="eDept">Home department</label><select id="eDept"><option value="">None</option>${S.departments.filter((d) => d.active || d.id === emp.department_id).map((d) => `<option value="${d.id}" ${d.id === emp.department_id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="eDept">Home department</label><select id="eDept"><option value="">None</option>${S.departments.filter((d) => (d.active || d.id === emp.department_id) && !!d.is_test === !!emp.is_test).map((d) => `<option value="${d.id}" ${d.id === emp.department_id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>
       <div class="btn-row"><button class="btn primary" id="eSave">Save changes</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
     $("eSave").addEventListener("click", async () => {
       const { error } = await sb.from("employees").update({ full_name: $("eName").value.trim(), department_id: $("eDept").value || null }).eq("id", emp.id);
