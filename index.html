@@ -104,7 +104,7 @@ main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px))
 .hint { font-size: 14px; color: var(--mute); }
 
 /* buttons */
-.btn { min-height: var(--tap); padding: 10px 18px; border-radius: var(--radius); border: 1.5px solid var(--charcoal); background: #fff; color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn { min-height: var(--tap); padding: 10px 18px; border-radius: var(--radius); border: 1.5px solid var(--charcoal); background: #fff; color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
 .btn.primary { background: var(--green); border-color: var(--green-deep); color: #fff; }
 .btn.primary:hover { background: var(--green-deep); }
 .btn.primary:active { background: #2F5C2A; }
@@ -142,6 +142,7 @@ tr.low td { background: var(--orange-soft); }
 .pill.off { background: #E6E9E5; color: var(--mute); }
 .pill.admin { background: var(--green); color: #fff; }
 .pill.checkout { background: var(--lime-soft); color: var(--ink); }
+.pill.test { background: var(--charcoal); color: #fff; }
 .actions { white-space: nowrap; }
 .actions button { margin-right: 4px; }
 .empty { color: var(--mute); padding: 20px 0; text-align: center; }
@@ -192,6 +193,9 @@ tr.low td { background: var(--orange-soft); }
 .subnav button.active { background: var(--charcoal); color: #fff; border-color: var(--charcoal); }
 .subview { display: none; }
 .subview.active { display: block; }
+
+/* test mode */
+.test-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: var(--orange-soft); border-bottom: 1.5px solid var(--orange); padding: 8px 16px; font-size: 15px; }
 
 /* modal */
 .modal-bg { position: fixed; inset: 0; background: rgba(27,36,32,.5); display: none; align-items: flex-end; justify-content: center; z-index: 50; padding: 0; }
@@ -271,6 +275,7 @@ tr.low td { background: var(--orange-soft); }
     <button data-view="reports" id="reportsTab" style="display:none">Reports</button>
     <button data-view="admin" id="adminTab" style="display:none">Admin</button>
   </nav>
+  <div class="test-banner" id="testBanner" style="display:none"><span><strong>Test mode.</strong> Only test items are shown, and nothing here counts toward real inventory or chargebacks.</span><button class="btn small" id="testOffBtn">Turn off</button></div>
 
   <main>
     <!-- ---------- CHECKOUT ---------- -->
@@ -317,6 +322,7 @@ tr.low td { background: var(--orange-soft); }
       <div class="panel">
         <h3>Receive from an invoice</h3>
         <p class="hint">Upload the vendor's invoice. Its lines are read and matched to your items for you to check; nothing is added to inventory until you confirm.</p>
+        <p class="hint" id="aiTestHint" style="display:none">Test mode: try it with the <a href="testing/test-invoice.pdf" download="test-invoice.pdf">sample test invoice</a>. Reading it costs a few cents, like any invoice.</p>
         <div class="row">
           <div class="field"><label for="aiFile">Scan or PDF</label><input id="aiFile" type="file" accept="application/pdf,image/*"></div>
           <div class="field"><label for="aiVendor">Vendor (optional)</label><input id="aiVendor" list="vendorList" placeholder="Read from the invoice if blank" autocomplete="off"><datalist id="vendorList"></datalist></div>
@@ -398,6 +404,12 @@ tr.low td { background: var(--orange-soft); }
       </div>
 
       <div class="subview active" id="sub-items">
+        <div class="panel">
+          <h3>Test mode</h3>
+          <p class="hint">Test items (marked <span class="pill test">Test</span> below) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to the test items only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
+          <p class="hint" id="testSummary"></p>
+          <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
+        </div>
         <div class="btn-row" style="margin-bottom:12px"><button class="btn primary" id="addItemBtn">Add item</button><button class="btn" id="bulkItemBtn">Add one item per size</button></div>
         <div class="panel quiet"><div class="table-wrap"><table id="adminItemsTable"><thead><tr><th>Item</th><th>Category</th><th>Size</th><th>SKU</th><th class="num">Unit cost</th><th class="num">Reorder at</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div></div>
       </div>
@@ -509,7 +521,7 @@ const S = {
   session: null, me: null, role: null,
   items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null,
   cart: [], cartEmployee: null, rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },
-  report: null
+  report: null, testMode: false, testIds: new Set()
 };
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
@@ -517,6 +529,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const itemLabel = (it) => `${it.name}${it.size ? " – " + it.size : ""}`;
 const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const isAdmin = () => S.role === "admin";
+// Test items (items.is_test) show only in test mode, and in test mode nothing else does. Admin → Items always lists both.
+const inScope = (itemId) => S.testIds.has(itemId) === S.testMode;
+const invoiceInScope = (v) => !!v.is_test === S.testMode;
+const TEST_MODE_KEY = "apparel.testMode";
 
 let toastTimer;
 function toast(msg, isErr = false) {
@@ -548,7 +564,8 @@ sb.auth.onAuthStateChange((_evt, session) => {
 
 function showLogin() {
   $("appShell").style.display = "none"; $("loginView").style.display = "flex";
-  S.me = null; S.role = null;
+  S.me = null; S.role = null; S.testMode = false;
+  try { sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
 }
 
 async function boot() {
@@ -559,6 +576,7 @@ async function boot() {
     await sb.auth.signOut(); return;
   }
   S.me = data; S.role = data.role;
+  try { S.testMode = isAdmin() && sessionStorage.getItem(TEST_MODE_KEY) === "1"; } catch (_) { S.testMode = false; }
   $("whoName").textContent = data.display_name || S.session.user.email;
   ["receiveTab", "reportsTab", "adminTab"].forEach((id) => { $(id).style.display = isAdmin() ? "" : "none"; });   // admin-only tabs
   $("loginView").style.display = "none"; $("appShell").style.display = "flex";
@@ -578,8 +596,9 @@ async function loadRefs() {
   ]);
   for (const r of [it, inv, dp, em]) if (r.error) return fail(r.error, "Couldn't load data");
   S.items = it.data; S.inventory = inv.data; S.departments = dp.data; S.employees = em.data;
+  S.testIds = new Set(S.items.filter((i) => i.is_test).map((i) => i.id));
   await loadUserNames();
-  renderDeptSelects(); renderInventory(); updateLowBadge(); renderCart();
+  renderTestMode(); renderDeptSelects(); renderInventory(); updateLowBadge(); renderCart();
   if (isAdmin()) { renderAdminItems(); renderDepts(); renderEmployees(); renderLabelPicker(); await loadInvoices(); await loadAliases(); }
 }
 async function refreshInventory() {
@@ -588,8 +607,14 @@ async function refreshInventory() {
   S.inventory = data; renderInventory(); updateLowBadge(); renderCart();
 }
 const onHandOf = (itemId) => (S.inventory.find((i) => i.id === itemId) || {}).on_hand ?? 0;
+// Narrows a transactions query to the current side: only test items' rows in test mode, none of them otherwise. Null when nothing can match.
+function scopeToMode(q) {
+  const ids = [...S.testIds];
+  if (S.testMode) return ids.length ? q.in("item_id", ids) : null;
+  return ids.length ? q.not("item_id", "in", `(${ids.join(",")})`) : q;
+}
 function updateLowBadge() {
-  const n = S.inventory.filter((i) => i.active && i.low_stock).length;
+  const n = S.inventory.filter((i) => i.active && i.low_stock && inScope(i.id)).length;
   const b = $("lowBadge"); b.textContent = n; b.style.display = n ? "" : "none";
 }
 
@@ -619,7 +644,7 @@ $("adminNav").addEventListener("click", (e) => {
    ========================================================= */
 function filterItems(q) {
   q = q.trim().toLowerCase();
-  return S.items.filter((it) => it.active && (!q || `${it.name} ${it.size || ""} ${it.sku} ${it.category || ""}`.toLowerCase().includes(q)));
+  return S.items.filter((it) => it.active && inScope(it.id) && (!q || `${it.name} ${it.size || ""} ${it.sku} ${it.category || ""}`.toLowerCase().includes(q)));
 }
 function renderPicklist(el, q, onPick) {
   const list = filterItems(q).slice(0, 60);
@@ -663,6 +688,8 @@ function onScan(code) {
   const sku = String(code).trim();
   const it = S.items.find((i) => i.sku.toLowerCase() === sku.toLowerCase());
   if (!it) return toast(`No item with SKU "${sku}".`, true);
+  if (!inScope(it.id)) return toast(S.testMode ? `Test mode is on, so only test items can be checked out. Turn it off to check out ${itemLabel(it)}.`
+    : isAdmin() ? `${itemLabel(it)} is a test item. Turn on test mode under Admin → Items to use it.` : "That's a test label. It can't be checked out.", true);
   if (!it.active) return toast(`${itemLabel(it)} is inactive.`, true);
   if (navigator.vibrate) navigator.vibrate(60);
   addToCart(it);
@@ -827,7 +854,7 @@ async function callFunction(url, payload, name) {
 }
 function aiStatus(msg) { const el = $("aiStatus"); el.style.display = msg ? "" : "none"; el.textContent = msg || ""; }
 function renderVendorList() {
-  const names = [...new Set([...S.invoices.map((v) => v.vendor), ...S.aliases.map((a) => a.vendor)])].filter(Boolean).sort();
+  const names = [...new Set([...S.invoices.filter(invoiceInScope).map((v) => v.vendor), ...S.aliases.filter((a) => inScope(a.item_id)).map((a) => a.vendor)])].filter(Boolean).sort();
   $("vendorList").innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
 }
 $("aiReadBtn").addEventListener("click", async () => {
@@ -843,7 +870,7 @@ $("aiReadBtn").addEventListener("click", async () => {
 async function readInvoice(inv) {
   aiStatus("Reading the invoice… this usually takes 20–60 seconds.");
   let res;
-  try { res = await callFunction(INVOICE_EXTRACT_URL, { invoice_id: inv.id }, "invoice-extract"); }
+  try { res = await callFunction(INVOICE_EXTRACT_URL, { invoice_id: inv.id, include_test: S.testMode }, "invoice-extract"); }
   catch (e) {
     aiStatus("");
     $("aiReview").style.display = "";
@@ -854,11 +881,15 @@ async function readInvoice(inv) {
     return;
   }
   aiStatus("");
+  if (!!inv.is_test !== S.testMode) return;   // test mode was switched while it read; the invoice stays saved on its own side
   const vendorGuess = (inv.vendor && inv.vendor !== "Unknown vendor") ? inv.vendor : (res.header.vendor || inv.vendor);
   S.ai = {
     invoice: inv,
     header: { vendor: vendorGuess, invoice_no: res.header.invoice_no || "", invoice_date: res.header.invoice_date || "", total: res.header.total ?? "" },
-    lines: (res.lines || []).map((l) => ({ ...l, qty: Math.max(0, Math.round(Number(l.qty) || 0)), unit_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), landed_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), base_cost: l.base_unit_cost == null ? "" : Number(l.base_unit_cost).toFixed(2), item_id: l.item_id || "", skip: false, remember: l.match !== "alias" })),
+    lines: (res.lines || []).map((l) => {
+      const match = l.item_id && inScope(l.item_id) ? l.match : "none";   // a test item outside test mode (or a real one inside it) can't be picked here
+      return { ...l, match, qty: Math.max(0, Math.round(Number(l.qty) || 0)), unit_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), landed_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), base_cost: l.base_unit_cost == null ? "" : Number(l.base_unit_cost).toFixed(2), item_id: match === "none" ? "" : l.item_id, skip: false, remember: match !== "alias" };
+    }),
     spread: res.spread ? { ...res.spread, on: true } : null,
     other_charges: res.other_charges || [], notes: res.notes || ""
   };
@@ -866,7 +897,7 @@ async function readInvoice(inv) {
 }
 function renderAiReview() {
   const a = S.ai; if (!a) return;
-  const itemOpts = (sel) => `<option value="">— choose an item —</option>` + S.items.filter((i) => i.active || i.id === sel).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(itemLabel(i))}${i.sku ? " · " + esc(i.sku) : ""}</option>`).join("");
+  const itemOpts = (sel) => `<option value="">— choose an item —</option>` + S.items.filter((i) => (i.active || i.id === sel) && inScope(i.id)).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(itemLabel(i))}${i.sku ? " · " + esc(i.sku) : ""}</option>`).join("");
   const pill = (l) => l.match === "alias" ? `<span class="pill known">Known match</span>` : l.item_id ? `<span class="pill suggested">Suggested${l.confidence && l.confidence !== "high" ? " · " + l.confidence : ""}</span>` : `<span class="pill unmatched">Needs an item</span>`;
   const rows = a.lines.map((l, i) => `<tr class="${l.skip ? "skipped" : ""}" data-row="${i}">
       <td>${esc(l.description)}${l.color || l.size ? `<div class="meta">${esc([l.color, l.size && "Size " + l.size].filter(Boolean).join(" · "))}</div>` : ""}${l.vendor_sku ? `<div class="meta">SKU ${esc(l.vendor_sku)}</div>` : ""}${a.spread?.on && l.base_cost !== "" ? `<div class="meta">${money(l.base_cost)} invoice price + ${money(a.spread.per_unit)} decoration and set-up</div>` : ""}${l.note ? `<div class="meta">${esc(l.note)}</div>` : ""}${l.line_total != null ? `<div class="meta">Line total ${money(l.line_total)}</div>` : ""}</td>
@@ -954,8 +985,9 @@ async function loadAliases() {
 }
 function renderAliases() {
   const tb = $("aliasTable").querySelector("tbody");
-  tb.innerHTML = S.aliases.length ? S.aliases.map((a) => `<tr><td>${esc(a.vendor)}</td><td>${a.vendor_sku ? `SKU ${esc(a.vendor_sku)}` : ""}${a.vendor_sku && a.description ? `<div class="meta">${esc(a.description)}</div>` : esc(a.description || "")}</td><td>${esc(a.item ? itemLabel(a.item) : "")}</td><td class="num">${a.uses}</td><td class="actions"><button class="btn small danger" data-adelete="${a.id}">Delete</button></td></tr>`).join("")
-    : `<tr><td colspan="5" class="empty">No matches saved yet. They appear after you receive from an invoice.</td></tr>`;
+  const rows = S.aliases.filter((a) => inScope(a.item_id));
+  tb.innerHTML = rows.length ? rows.map((a) => `<tr><td>${esc(a.vendor)}</td><td>${a.vendor_sku ? `SKU ${esc(a.vendor_sku)}` : ""}${a.vendor_sku && a.description ? `<div class="meta">${esc(a.description)}</div>` : esc(a.description || "")}</td><td>${esc(a.item ? itemLabel(a.item) : "")}</td><td class="num">${a.uses}</td><td class="actions"><button class="btn small danger" data-adelete="${a.id}">Delete</button></td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No ${S.testMode ? "test " : ""}matches saved yet. They appear after you receive from an invoice.</td></tr>`;
 }
 $("aliasTable").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-adelete]"); if (!b) return;
@@ -981,7 +1013,7 @@ async function loadInvoices() {
 }
 function renderInvoiceSelect() {
   const sel = $("rcvInvoice"), cur = sel.value;
-  const recent = S.invoices.slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
+  const recent = S.invoices.filter(invoiceInScope).slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
   sel.innerHTML = `<option value="">No invoice</option><option value="__new">Attach a new invoice…</option>${recent}`;
   sel.value = cur; if (sel.value !== cur) sel.value = "";
 }
@@ -1000,6 +1032,7 @@ async function createInvoice({ file, vendor, invoice_no, invoice_date, total, no
   if (up.error) { fail(up.error, "Couldn't upload the file"); return null; }
   const row = { id, vendor, invoice_no: (invoice_no || "").trim() || null, invoice_date: invoice_date || null, total: totalNum, notes: (notes || "").trim() || null,
     file_path, file_name: file.name || safeName, content_type: file.type || null, size_bytes: file.size, uploaded_by: S.session.user.id };
+  if (S.testMode) row.is_test = true;
   const { data, error } = await sb.from("invoices").insert(row).select("*").single();
   if (error) { await sb.storage.from(INVOICE_BUCKET).remove([file_path]); fail(error, "Couldn't save the invoice"); return null; }
   toast(`Saved invoice from ${vendor}`);
@@ -1024,10 +1057,11 @@ $("invoicesSearch").addEventListener("input", renderInvoices);
 function renderInvoices() {
   const q = $("invoicesSearch").value.trim().toLowerCase();
   const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid === S.session.user.id ? (S.me.display_name || "you") : "—");
-  const rows = S.invoices.filter((v) => !q || `${v.vendor} ${v.invoice_no || ""} ${v.notes || ""} ${v.file_name}`.toLowerCase().includes(q));
+  const scoped = S.invoices.filter(invoiceInScope);
+  const rows = scoped.filter((v) => !q || `${v.vendor} ${v.invoice_no || ""} ${v.notes || ""} ${v.file_name}`.toLowerCase().includes(q));
   const tb = $("invoicesTable").querySelector("tbody");
   tb.innerHTML = rows.length ? rows.map((v) => `<tr><td>${esc(fmtDate(v.invoice_date))}</td><td>${esc(v.vendor)}</td><td>${esc(v.invoice_no || "")}</td><td class="num">${v.total == null ? "" : money(v.total)}</td><td class="num">${v.line_count}</td><td>${esc(byName(v.uploaded_by))}</td><td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button><button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">${S.invoices.length ? "No matches." : "No invoices yet."}</td></tr>`;
+    : `<tr><td colspan="7" class="empty">${scoped.length ? "No matches." : S.testMode ? "No test invoices yet." : "No invoices yet."}</td></tr>`;
 }
 $("invoicesTable").addEventListener("click", async (e) => {
   const op = e.target.closest("[data-iopen]"), ed = e.target.closest("[data-iedit]"), dl = e.target.closest("[data-idelete]");
@@ -1070,11 +1104,11 @@ $("refreshInvBtn").addEventListener("click", async () => { await refreshInventor
 ["invSearch", "invCat", "invOnly"].forEach((id) => $(id).addEventListener("input", renderInventory));
 
 function renderInventory() {
-  const cats = [...new Set(S.items.map((i) => i.category).filter(Boolean))].sort();
+  const cats = [...new Set(S.items.filter((i) => inScope(i.id)).map((i) => i.category).filter(Boolean))].sort();
   const sel = $("invCat"); const cur = sel.value;
   sel.innerHTML = `<option value="">All</option>` + cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); sel.value = cur;
 
-  const active = S.inventory.filter((i) => i.active);
+  const active = S.inventory.filter((i) => i.active && inScope(i.id));
   const low = active.filter((i) => i.low_stock);
   const units = active.reduce((a, i) => a + i.on_hand, 0);
   const value = active.reduce((a, i) => a + i.on_hand * Number(i.unit_cost), 0);
@@ -1087,7 +1121,7 @@ function renderInventory() {
   rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || String(a.size || "").localeCompare(String(b.size || "")));
   const tb = $("invTable").querySelector("tbody");
   tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(i.name)}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">${S.items.length ? "No items match." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
+    : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items with “Test item” ticked." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => { const b = e.target.closest("[data-adjust]"); if (b) openAdjust(b.dataset.adjust); });
 function openAdjust(id) {
@@ -1107,7 +1141,8 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const { data, error } = await sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no)").order("created_at", { ascending: false }).limit(60);
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no)").order("created_at", { ascending: false }).limit(60));
+  const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
   const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid === S.session.user.id ? (S.me.display_name || "you") : "—");
@@ -1117,7 +1152,7 @@ async function loadActivity() {
     const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">Invoice: ${esc(t.invoice.vendor)}${t.invoice.invoice_no ? " #" + esc(t.invoice.invoice_no) : ""}</button></div>` : "";
     const who = t.type === "checkout" ? `${esc(t.employee?.full_name || "")}<div class="meta sub">${esc(t.department?.name || "")}</div>` : esc(t.notes || "") + inv;
     return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${who}</td><td>${esc(byName(t.performed_by))}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}">Undo</button>` : ""}</td></tr>`;
-  }).join("") : `<tr><td colspan="7" class="empty">No activity yet.</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
 }
 $("actTable").addEventListener("click", async (e) => {
   const iv = e.target.closest("[data-inv]"); if (iv) { if (!S.invoices.length) await loadInvoices(); return openInvoice(iv.dataset.inv); }
@@ -1154,19 +1189,20 @@ async function runReport() {
   let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, item:items(name,size,sku,category), department:departments(id,name,code), employee:employees(full_name)")
     .eq("type", "checkout").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at");
   if ($("repDept").value) q = q.eq("department_id", $("repDept").value);
-  const { data, error } = await q;
+  q = scopeToMode(q);
+  const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Report failed");
   if (!S.users.length) await loadUserNames();
-  S.report = { from, to, rows: data };
+  S.report = { from, to, rows: data, test: S.testMode };
   $("csvBtn").disabled = !data.length;
   const out = $("reportOut");
-  if (!data.length) { out.innerHTML = `<div class="empty">No checkouts between ${from} and ${to}.</div>`; return; }
+  if (!data.length) { out.innerHTML = `<div class="empty">No ${S.testMode ? "test " : ""}checkouts between ${from} and ${to}.</div>`; return; }
 
   const groups = {};
   data.forEach((t) => { const k = t.department?.id || "none"; (groups[k] = groups[k] || { dept: t.department, rows: [], total: 0, units: 0 }); groups[k].rows.push(t); groups[k].total += -t.qty_change * Number(t.unit_cost || 0); groups[k].units += -t.qty_change; });
   const grand = Object.values(groups).reduce((a, g) => a + g.total, 0);
   const gunits = Object.values(groups).reduce((a, g) => a + g.units, 0);
-  let html = `<div class="stats"><div class="stat"><div class="n">${money(grand)}</div><div class="l">total to charge back</div></div><div class="stat"><div class="n">${gunits}</div><div class="l">units issued</div></div><div class="stat"><div class="n">${Object.keys(groups).length}</div><div class="l">departments</div></div></div>`;
+  let html = (S.testMode ? `<p class="hint">Test mode: only test-item checkouts are included, so these are not real chargebacks.</p>` : "") + `<div class="stats"><div class="stat"><div class="n">${money(grand)}</div><div class="l">total to charge back</div></div><div class="stat"><div class="n">${gunits}</div><div class="l">units issued</div></div><div class="stat"><div class="n">${Object.keys(groups).length}</div><div class="l">departments</div></div></div>`;
   Object.values(groups).sort((a, b) => b.total - a.total).forEach((g) => {
     html += `<div class="group panel quiet"><div class="group-head"><h3>${esc(g.dept?.name || "No department")}${g.dept?.code ? ` <span class="sub">(${esc(g.dept.code)})</span>` : ""}</h3><span class="total">${money(g.total)}</span></div>
       <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>`;
@@ -1182,7 +1218,7 @@ $("csvBtn").addEventListener("click", () => {
   const lines = [["Date", "Department", "Dept code", "Employee", "Item", "Size", "SKU", "Category", "Qty", "Unit cost", "Total", "Checked out by", "Notes"].map(cell).join(",")];
   S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.name, t.department?.code, t.employee?.full_name, t.item?.name, t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), byName(t.performed_by), t.notes].map(cell).join(",")));
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `apparel-chargebacks-${S.report.from}-to-${S.report.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${S.report.test ? "TEST-" : ""}apparel-chargebacks-${S.report.from}-to-${S.report.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
 });
 
 /* =========================================================
@@ -1212,11 +1248,69 @@ async function deleteRecord(kind, id) {
 }
 
 /* =========================================================
+   TEST MODE (admin only)
+   Test items and test invoices are kept apart from real ones: in test
+   mode every screen shows only them, and outside it they are hidden.
+   ========================================================= */
+function renderTestMode() {
+  $("testBanner").style.display = S.testMode ? "" : "none";
+  $("aiTestHint").style.display = S.testMode ? "" : "none";
+  $("testToggleBtn").textContent = S.testMode ? "Turn off test mode" : "Turn on test mode";
+  const names = [...new Set(S.items.filter((i) => S.testIds.has(i.id)).map((i) => i.name))];
+  $("testSummary").textContent = names.length ? `Test items: ${names.join(", ")} (${S.testIds.size} in all).` : "No test items yet. Add one below with “Test item” ticked.";
+}
+async function setTestMode(on) {
+  S.testMode = on && isAdmin();
+  try { if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
+  // Nothing carries over, so a cart, half-done receive or report from one side can't be finished on the other.
+  S.cart = []; S.rcvItem = null; S.ai = null; S.report = null;
+  $("pickArea").style.display = "none"; $("rcvList").style.display = "none";
+  $("rcvSearch").value = ""; $("rcvChosen").textContent = ""; $("rcvCost").value = ""; $("confirmReceiveBtn").disabled = true;
+  $("aiReview").style.display = "none"; $("aiReview").innerHTML = "";
+  $("reportOut").innerHTML = `<div class="empty">Choose a date range and run the report.</div>`; $("csvBtn").disabled = true;
+  await loadRefs();
+  if ($("view-inventory").classList.contains("active")) loadActivity();
+  toast(S.testMode ? "Test mode on: only test items are shown" : "Test mode off");
+}
+$("testToggleBtn").addEventListener("click", () => setTestMode(!S.testMode));
+$("testOffBtn").addEventListener("click", () => setTestMode(false));
+$("testClearBtn").addEventListener("click", async () => {
+  const ids = [...S.testIds], invs = S.invoices.filter((v) => v.is_test);
+  const matches = S.aliases.filter((a) => S.testIds.has(a.item_id)).length;
+  let n = 0;
+  if (ids.length) {
+    const { count, error } = await sb.from("transactions").select("id", { count: "exact", head: true }).in("item_id", ids);
+    if (error) return fail(error, "Couldn't count test activity");
+    n = count || 0;
+  }
+  if (!n && !invs.length && !matches) return toast("There's no test activity to clear.");
+  if (!confirm(`Delete ${n} test transaction${n === 1 ? "" : "s"}, ${invs.length} test invoice${invs.length === 1 ? "" : "s"} (with ${invs.length === 1 ? "its file" : "their files"}) and ${matches} test vendor match${matches === 1 ? "" : "es"}, and set the test items' cost back to $0.00? Real items, invoices and reports aren't touched.`)) return;
+  if (ids.length) {
+    let r = await sb.from("transactions").delete().in("item_id", ids);
+    if (r.error) return fail(r.error, "Couldn't delete the test transactions");
+    r = await sb.from("vendor_aliases").delete().in("item_id", ids);
+    if (r.error) return fail(r.error, "Couldn't delete the test vendor matches");
+    r = await sb.from("items").update({ unit_cost: 0 }).in("id", ids);
+    if (r.error) return fail(r.error, "Couldn't reset the test items' cost");
+  }
+  if (invs.length) {
+    const { error } = await sb.from("invoices").delete().in("id", invs.map((v) => v.id));
+    if (error) return fail(error, "Couldn't delete the test invoices");
+    const rm = await sb.storage.from(INVOICE_BUCKET).remove(invs.map((v) => v.file_path));
+    if (rm.error) console.warn("Test invoice rows deleted but their files were not removed", rm.error);
+  }
+  toast("Test activity cleared");
+  await loadRefs();
+  if ($("view-inventory").classList.contains("active")) loadActivity();
+});
+
+/* =========================================================
    ADMIN: ITEMS
    ========================================================= */
+const testItemCheck = (id) => `<div class="field"><label class="check" style="white-space:normal"><input type="checkbox" id="${id}">Test item: only shows in test mode and is left out of every report</label></div>`;
 function renderAdminItems() {
   const tb = $("adminItemsTable").querySelector("tbody");
-  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span></td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
+  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
     : `<tr><td colspan="8" class="empty">No items yet. Add one, or add one item per size to build out a whole product at once.</td></tr>`;
 }
 $("adminItemsTable").addEventListener("click", async (e) => {
@@ -1233,11 +1327,13 @@ function openItemForm(it) {
     <datalist id="catList">${[...new Set(S.items.map((i) => i.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
     <div class="field"><label for="fSku">SKU (goes on the label)</label><input id="fSku" value="${esc(it?.sku || "")}" placeholder="HV-VEST-C2-L" style="text-transform:uppercase"></div>
     <div class="row"><div class="field narrow"><label for="fCost">Unit cost</label><input id="fCost" type="number" step="0.01" min="0" inputmode="decimal" value="${it ? Number(it.unit_cost).toFixed(2) : ""}"></div><div class="field narrow"><label for="fThr">Reorder when at or below</label><input id="fThr" type="number" min="0" inputmode="numeric" value="${it?.reorder_threshold ?? 5}"></div></div>
+    ${it ? (it.is_test ? `<p class="hint">This is a test item: it only shows in test mode and is left out of every report.</p>` : "") : testItemCheck("fTest")}
     <div class="btn-row"><button class="btn primary" id="fSave">${it ? "Save changes" : "Add item"}</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("fName").focus();
   $("fSave").addEventListener("click", async () => {
     const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, reorder_threshold: parseInt($("fThr").value) || 0 };
     if (!row.name || !row.sku) return toast("Name and SKU are required.", true);
+    if (!it && $("fTest").checked) row.is_test = true;   // set only when adding, so an item with real history can't be hidden from reports later
     const { error } = it ? await sb.from("items").update(row).eq("id", it.id) : await sb.from("items").insert(row);
     if (error) return fail(error, error.code === "23505" ? "That SKU is already in use" : "Couldn't save item");
     closeModal(); toast(it ? "Item saved" : "Item added"); await loadRefs();
@@ -1249,6 +1345,7 @@ $("bulkItemBtn").addEventListener("click", () => {
     <div class="row"><div class="field"><label for="bCat">Category</label><input id="bCat" placeholder="shirt"></div><div class="field"><label for="bPrefix">SKU prefix</label><input id="bPrefix" placeholder="HV-LS-C3" style="text-transform:uppercase"></div></div>
     <div class="field"><label for="bSizes">Sizes, comma separated</label><input id="bSizes" value="S, M, L, XL, 2XL, 3XL"></div>
     <div class="row"><div class="field narrow"><label for="bCost">Unit cost</label><input id="bCost" type="number" step="0.01" min="0" inputmode="decimal"></div><div class="field narrow"><label for="bThr">Reorder when at or below</label><input id="bThr" type="number" min="0" value="5"></div></div>
+    ${testItemCheck("bTest")}
     <div class="btn-row"><button class="btn primary" id="bSave">Add items</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("bName").focus();
   $("bSave").addEventListener("click", async () => {
@@ -1256,6 +1353,7 @@ $("bulkItemBtn").addEventListener("click", () => {
     const sizes = $("bSizes").value.split(",").map((s) => s.trim()).filter(Boolean);
     if (!name || !prefix || !sizes.length) return toast("Name, SKU prefix and at least one size are required.", true);
     const rows = sizes.map((sz) => ({ name, category: $("bCat").value.trim() || null, size: sz, sku: `${prefix}-${sz.replace(/\s+/g, "").toUpperCase()}`, unit_cost: Number($("bCost").value) || 0, reorder_threshold: parseInt($("bThr").value) || 0 }));
+    if ($("bTest").checked) rows.forEach((r) => (r.is_test = true));
     const { error } = await sb.from("items").insert(rows);
     if (error) return fail(error, error.code === "23505" ? "One of those SKUs already exists" : "Couldn't add items");
     closeModal(); toast(`Added ${rows.length} items`); await loadRefs();
@@ -1267,7 +1365,7 @@ $("bulkItemBtn").addEventListener("click", () => {
    ========================================================= */
 function renderLabelPicker() {
   const el = $("labelPicker"); const prev = {}; el.querySelectorAll("input").forEach((i) => (prev[i.dataset.id] = i.value));
-  el.innerHTML = S.items.filter((i) => i.active).map((i) => `<div class="lp-name">${esc(itemLabel(i))} <span class="sub">${esc(i.sku)}</span></div><input type="number" min="0" inputmode="numeric" data-id="${i.id}" value="${prev[i.id] || 0}">`).join("") || `<div class="empty">Add items first.</div>`;
+  el.innerHTML = S.items.filter((i) => i.active && inScope(i.id)).map((i) => `<div class="lp-name">${esc(itemLabel(i))} <span class="sub">${esc(i.sku)}</span></div><input type="number" min="0" inputmode="numeric" data-id="${i.id}" value="${prev[i.id] || 0}">`).join("") || `<div class="empty">${S.testMode ? "No test items yet." : "Add items first."}</div>`;
 }
 $("labelsClearBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 0)));
 $("labelsFiveBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 5)));

@@ -7,7 +7,12 @@
 // Request:  POST /functions/v1/invoice-extract
 //           Authorization: Bearer <caller's Supabase access token>
 //           apikey: <anon key>
-//           body: { "invoice_id": "<uuid of apparel.invoices row>" }
+//           body: { "invoice_id": "<uuid of apparel.invoices row>",
+//                   "include_test": false }
+//
+// include_test is the page's test mode: true matches against the test items
+// (items.is_test) only, false (the default) against the real items only, so a
+// real invoice never lands on a test item and vice versa.
 //
 // Response: {
 //   header: { vendor, invoice_no, invoice_date, subtotal, total },
@@ -137,7 +142,7 @@ const Extraction = z.object({
 });
 type ExtractionT = z.infer<typeof Extraction>;
 
-type Item = { id: string; name: string; size: string | null; sku: string | null; category: string | null; active: boolean };
+type Item = { id: string; name: string; size: string | null; sku: string | null; category: string | null; active: boolean; is_test: boolean };
 type Alias = { vendor_key: string; alias_key: string; item_id: string };
 
 function systemPrompt(items: Item[]): string {
@@ -166,7 +171,7 @@ function systemPrompt(items: Item[]): string {
 // Main
 // ---------------------------------------------------------------------------
 
-async function extract(admin: SupabaseClient, invoiceId: string) {
+async function extract(admin: SupabaseClient, invoiceId: string, includeTest: boolean) {
   const { data: inv, error: invErr } = await admin.from("invoices").select("id, vendor, file_path, file_name, content_type, size_bytes").eq("id", invoiceId).maybeSingle();
   if (invErr) throw new HttpError(500, `Couldn't read the invoice: ${invErr.message}`);
   if (!inv) throw new HttpError(404, "That invoice doesn't exist.");
@@ -191,7 +196,7 @@ async function extract(admin: SupabaseClient, invoiceId: string) {
   }
 
   const [{ data: items, error: itErr }, { data: aliases, error: alErr }] = await Promise.all([
-    admin.from("items").select("id, name, size, sku, category, active").eq("active", true).order("name").order("size"),
+    admin.from("items").select("id, name, size, sku, category, active, is_test").eq("active", true).eq("is_test", includeTest).order("name").order("size"),
     admin.from("vendor_aliases").select("vendor_key, alias_key, item_id"),
   ]);
   if (itErr) throw new HttpError(500, `Couldn't load items: ${itErr.message}`);
@@ -257,12 +262,13 @@ Deno.serve(async (req: Request) => {
     try { body = (await req.json()) as Record<string, unknown>; } catch { throw new HttpError(400, "Body must be JSON."); }
     const invoiceId = typeof body?.invoice_id === "string" ? body.invoice_id.trim() : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invoiceId)) throw new HttpError(400, "invoice_id must be a UUID.");
+    const includeTest = body?.include_test === true;
 
     const caller = await requireCaller(req);
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, adminOpts);
     await requireActiveAdmin(admin, caller);
 
-    return json(await extract(admin, invoiceId), 200, origin);
+    return json(await extract(admin, invoiceId, includeTest), 200, origin);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin);
     if (e instanceof Anthropic.APIError) {

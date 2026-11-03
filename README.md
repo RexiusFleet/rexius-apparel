@@ -16,6 +16,8 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `assets/` — Rexius logo files referenced by `index.html` (full-colour logo on the login screen, white wordmark in the top bar, leaf mark for the favicon, home-screen icon and login backdrop). Deploy this folder alongside `index.html`.
 - `supabase/migrations/20261027170000_move_to_apparel_schema.sql` — **current layout**: everything lives in its own `apparel` schema (`apparel.items`, `apparel.transactions`, …). Run once after an admin has exposed the `apparel` schema under Project Settings → Data API. Older scripts are kept in `sql_history/` for reference only.
 - `supabase/migrations/20261029100000_seed_highvis_items.sql` — the starting product list (short-sleeve tee, long-sleeve tee, sweatshirt and safety vest in S–4XL, plus a one-size ball cap: 29 items), built from the "High-Vis Product Info" sheet. Run once, the same way; safe to re-run after the sheet changes, and it renames the original HV-TS-* tee SKUs in place if they were loaded earlier.
+- `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
+- `testing/` — `test-invoice.pdf`, a sample invoice from a made-up vendor for trying invoice reading in test mode, and `make_test_invoice.py`, which rebuilds it (`python3 testing/make_test_invoice.py`). Deploy this folder alongside `index.html`; the app links to the PDF.
 - `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic invoice reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
 - `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column; people are identified by name and home department only. Run once, the same way, on a project that was set up before it existed.
@@ -92,7 +94,7 @@ Already set up for `RexiusFleet/rexius-apparel`: Settings → Pages → Source "
 To stand it up somewhere new:
 
 1. Create a new repository in the `RexiusFleet` organization (private is fine — Pages still works on private repos with GitHub Pro/Team/Enterprise; otherwise use a public repo).
-2. Add `index.html` and `assets/` to the root of the repo and commit.
+2. Add `index.html`, `assets/` and `testing/` to the root of the repo and commit.
 3. Repo → Settings → Pages → Source: "Deploy from a branch" → branch `main`, folder `/ (root)` → Save.
 4. After a minute the site is live at `https://<org>.github.io/<repo>/`. Open it on a phone, sign in, and allow camera access when prompted.
 5. Add the new origin to `ALLOWED_ORIGINS` in both Edge Functions and redeploy them (see "Where it lives" above).
@@ -137,6 +139,34 @@ Setup, once:
    ```
 
 The function uses Claude Opus 5.5 and typically costs a few cents per invoice. Only active admins can call it; it only reads files from the private `apparel-invoices` bucket and writes nothing itself. Files over 20 MB and HEIC photos are rejected with a clear message (iPhone users: set the camera to *Most compatible*, or upload a PDF).
+
+## Test product and test mode
+
+For trying the app out, or checking a new feature, without touching real numbers. Test items are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show under **Admin → Items**, with a *Test* tag. The starting one is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too.
+
+**Admin → Items → Turn on test mode** switches every screen over to the test items, and only them, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
+
+- **Receive** lists only test items. Invoices uploaded are saved as test invoices, and *Receive from an invoice* matches lines to test items only. Try it with the sample test invoice (`testing/test-invoice.pdf`, linked from the test mode panel and the Receive tab). It should come back as three lines (S 4, M 6, L 2) at $12.50 each: $10.00 plus $2.50 of screen print and set-up spread over the 12 pieces, with $9.50 freight listed as not received. Reading it costs a few cents, like any invoice.
+- **Print labels** lists only test items, so you can print a test QR label and scan it on **Check out**.
+- **Inventory**, **Recent activity**, **Reports** and **Admin → Invoices** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
+- Checkouts still need a real employee and department. The transaction counts as a test one because its item is a test item.
+
+Outside test mode, real reports, inventory totals and low-stock counts never include test items, and checkout users never see them (scanning a test label tells them it is a test label).
+
+**Clear test activity** (Admin → Items) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Real data is not touched.
+
+To add more test items, tick **Test item** when adding an item (or one item per size). It can only be set when an item is created, so an item with real history can never be hidden from reports later.
+
+Setup, once, in this order:
+
+1. Run `supabase/migrations/20261102120000_test_product.sql` in the SQL Editor (adds the test flags and the Test Product).
+2. Redeploy the invoice reader, which now keeps test and real items apart:
+
+   ```bash
+   supabase functions deploy invoice-extract --no-verify-jwt
+   ```
+
+3. Push `index.html` and `testing/` to `main`.
 
 ## Day to day
 
