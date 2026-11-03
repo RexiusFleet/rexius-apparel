@@ -12,6 +12,9 @@
 -- flows update it from the latest invoice line, so it will track
 -- real purchase prices as they come in.
 --
+-- Reorder points are 10 for everything except the ball cap (since
+-- 2026-11-03; see 20261103120000_reorder_points_10.sql).
+--
 -- Safe to re-run: an existing SKU gets its name, category, size
 -- and reorder threshold refreshed, but its unit cost and
 -- active flag are left alone (those are maintained in the app).
@@ -36,10 +39,10 @@ select
   reorder_threshold,
   true
 from (values
-  ('HV-SS', 'High-Vis T-Shirt - Short Sleeve', 'Shirt', 15),
-  ('HV-LS', 'High-Vis T-Shirt - Long Sleeve',  'Shirt', 15),
-  ('HV-HD', 'High-Vis Sweatshirt',             'Hoody', 15),
-  ('RX-SV', 'Safety Vest',                     'Vest',  24)
+  ('HV-SS', 'High-Vis T-Shirt - Short Sleeve', 'Shirt', 10),
+  ('HV-LS', 'High-Vis T-Shirt - Long Sleeve',  'Shirt', 10),
+  ('HV-HD', 'High-Vis Sweatshirt',             'Hoody', 10),
+  ('RX-SV', 'Safety Vest',                     'Vest',  10)
 ) as p(prefix, name, category, reorder_threshold)
 cross join (values
   ('S'), ('M'), ('L'), ('XL'), ('2XL'), ('3XL'), ('4XL')
