@@ -13,6 +13,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 ## Files
 
 - `index.html` — the whole app. The Supabase URL and anon key are set at the top of the `<script>` block.
+- `CLAUDE.md` — a short orientation Claude Code reads at the start of every session: where things live, how changes go live and how to test. Keep it in step with this README.
 - `assets/` — Rexius logo files referenced by `index.html` (full-colour logo on the login screen, white wordmark in the top bar, leaf mark for the favicon, home-screen icon and login backdrop). Deploy this folder alongside `index.html`.
 - `supabase/migrations/20261027170000_move_to_apparel_schema.sql` — **current layout**: everything lives in its own `apparel` schema (`apparel.items`, `apparel.transactions`, …). Run once after an admin has exposed the `apparel` schema under Project Settings → Data API. Older scripts are kept in `sql_history/` for reference only.
 - `supabase/migrations/20261029100000_seed_highvis_items.sql` — the starting product list (short-sleeve tee, long-sleeve tee, sweatshirt and safety vest in S–4XL, plus a one-size ball cap: 29 items), built from the "High-Vis Product Info" sheet. Run once, the same way; safe to re-run after the sheet changes, and it renames the original HV-TS-* tee SKUs in place if they were loaded earlier.
