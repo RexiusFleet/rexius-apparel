@@ -401,15 +401,10 @@ tr.low td { background: var(--orange-soft); }
         <button data-sub="employees">Employees</button>
         <button data-sub="invoices">Invoices</button>
         <button data-sub="users">Users</button>
+        <button data-sub="test">Test mode</button>
       </div>
 
       <div class="subview active" id="sub-items">
-        <div class="panel">
-          <h3>Test mode</h3>
-          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
-          <p class="hint" id="testSummary"></p>
-          <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
-        </div>
         <div class="btn-row" style="margin-bottom:12px"><button class="btn primary" id="addItemBtn">Add item</button><button class="btn" id="bulkItemBtn">Add one item per size</button></div>
         <div class="panel quiet"><div class="table-wrap"><table id="adminItemsTable"><thead><tr><th>Item</th><th>Category</th><th>Size</th><th>SKU</th><th class="num">Unit cost</th><th class="num">Reorder at</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div></div>
       </div>
@@ -493,6 +488,16 @@ tr.low td { background: var(--orange-soft); }
         <div class="panel quiet">
           <div class="view-head" style="margin-bottom:8px"><h3>App users</h3><button class="btn small" id="refreshUsersBtn">Refresh</button></div>
           <div class="table-wrap"><table id="userTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="subview" id="sub-test">
+        <div class="panel">
+          <h3>Test mode</h3>
+          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
+          <p class="hint" id="testSummary"></p>
+          <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
+          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test invoice and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items, employees and departments are kept for next time.</p>
         </div>
       </div>
     </section>
@@ -689,7 +694,7 @@ function onScan(code) {
   const it = S.items.find((i) => i.sku.toLowerCase() === sku.toLowerCase());
   if (!it) return toast(`No item with SKU "${sku}".`, true);
   if (!inScope(it.id)) return toast(S.testMode ? `Test mode is on, so only test items can be checked out. Turn it off to check out ${itemLabel(it)}.`
-    : isAdmin() ? `${itemLabel(it)} is a test item. Turn on test mode under Admin → Items to use it.` : "That's a test label. It can't be checked out.", true);
+    : isAdmin() ? `${itemLabel(it)} is a test item. Turn on test mode (Admin → Test mode) to use it.` : "That's a test label. It can't be checked out.", true);
   if (!it.active) return toast(`${itemLabel(it)} is inactive.`, true);
   if (navigator.vibrate) navigator.vibrate(60);
   addToCart(it);

@@ -145,9 +145,9 @@ The function uses Claude Opus 5.5 and typically costs a few cents per invoice. O
 
 For trying the app out, or checking a new feature, without touching real numbers or real people. Test items, employees and departments are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show in the Admin lists (Items, Employees, Departments), with a *Test* tag. The starting set is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too, and **Test Employee**, whose home department is **Test Department** (code `TEST`).
 
-**Admin → Items → Turn on test mode** switches every screen over to test data, and only test data, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
+**Admin → Test mode → Turn on test mode** switches every screen over to test data, and only test data, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
 
-- **Receive** lists only test items. Invoices uploaded are saved as test invoices, and *Receive from an invoice* matches lines to test items only. Try it with the sample test invoice (`testing/test-invoice.pdf`, linked from the test mode panel and the Receive tab). It should come back as three lines (S 4, M 6, L 2) at $12.50 each: $10.00 plus $2.50 of screen print and set-up spread over the 12 pieces, with $9.50 freight listed as not received. Reading it costs a few cents, like any invoice.
+- **Receive** lists only test items. Invoices uploaded are saved as test invoices, and *Receive from an invoice* matches lines to test items only. Try it with the sample test invoice (`testing/test-invoice.pdf`, linked from Admin → Test mode and the Receive tab). It should come back as three lines (S 4, M 6, L 2) at $12.50 each: $10.00 plus $2.50 of screen print and set-up spread over the 12 pieces, with $9.50 freight listed as not received. Reading it costs a few cents, like any invoice.
 - **Print labels** lists only test items, so you can print a test QR label and scan it on **Check out**.
 - **Inventory**, **Recent activity**, **Reports** and **Admin → Invoices** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
 - **Check out** offers only test employees and test departments, so a test checkout touches nothing real: Test Product to Test Employee, charged to Test Department.
@@ -156,7 +156,7 @@ Outside test mode, real reports, inventory totals and low-stock counts never inc
 
 **Anything you add while test mode is on is a test record**: items (including one item per size), employees (including a new employee added from the check out screen), departments and invoices. Anything added outside test mode is real. The flag is only set when a record is created, so a real item, employee or department with history can never be hidden from reports later.
 
-**Clear test activity** (Admin → Items) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
+**Clear test activity** (Admin → Test mode) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
 
 Setup, once, in this order:
 
