@@ -13,3 +13,10 @@ verify_jwt = false
 # Same arrangement as admin-users: the function verifies the caller's JWT
 # itself and requires an active admin. Needs the ANTHROPIC_API_KEY_APPAREL secret.
 verify_jwt = false
+
+[functions.low-stock-alert]
+# Called by the database through pg_net, which has no user token to send.
+# The function trusts nothing in the request: it only sends low-stock emails
+# already queued in apparel.low_stock_alerts. Needs the GMAIL_ADDRESS_APPAREL
+# and GMAIL_APP_PASSWORD_APPAREL secrets.
+verify_jwt = false

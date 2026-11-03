@@ -8,7 +8,7 @@ Internal app for issuing branded high-vis apparel, tracking inventory, and gener
 - **Live app:** https://rexiusfleet.github.io/rexius-apparel/ — served by GitHub Pages from the `main` branch, so every push to `main` goes live within a minute or two.
 - **Supabase project:** `hibjqcgitqtgmkurghlw` ("AM Projects"), shared with another app. Do not change the project-wide Auth Site URL for this app; it only signs in with email and password and never sends auth emails.
 
-If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Edge Functions (`supabase/functions/admin-users/index.ts` and `supabase/functions/invoice-extract/index.ts`) to the new `*.github.io` origin and redeploy them, or the browser will be blocked by CORS.
+If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Edge Functions (`supabase/functions/admin-users/index.ts` and `supabase/functions/invoice-extract/index.ts`) to the new `*.github.io` origin and redeploy them, or the browser will be blocked by CORS. Also set the `APPAREL_APP_URL` secret to the new address, so low-stock emails link to it.
 
 ## Files
 
@@ -18,12 +18,14 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261029100000_seed_highvis_items.sql` — the starting product list (short-sleeve tee, long-sleeve tee, sweatshirt and safety vest in S–4XL, plus a one-size ball cap: 29 items), built from the "High-Vis Product Info" sheet. Run once, the same way; safe to re-run after the sheet changes, and it renames the original HV-TS-* tee SKUs in place if they were loaded earlier.
 - `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script.
+- `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `testing/` — `test-invoice.pdf`, a sample invoice from a made-up vendor for trying invoice reading in test mode, and `make_test_invoice.py`, which rebuilds it (`python3 testing/make_test_invoice.py`). Deploy this folder alongside `index.html`; the app links to the PDF.
 - `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic invoice reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
 - `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column; people are identified by name and home department only. Run once, the same way, on a project that was set up before it existed.
 - `supabase/migrations/20261027120000_apparel_rls.sql` — (historical, `public` schema) the row-level security: locks every apparel table to members of `app_users` (the Supabase project is shared with another app) and adds the helper functions the user-management function needs. Supersedes the RLS section of `apparel_schema_public.sql`; safe to re-run.
 - `supabase/functions/admin-users/index.ts` — Edge Function that lets admins create logins, change roles, reset passwords and deactivate/reactivate apparel users without the service-role key ever reaching the browser.
+- `supabase/functions/low-stock-alert/` — Edge Function that sends the queued low-stock emails from the app's Gmail account (`index.ts`). The grouping and wording live in `message.ts`, tested with `node supabase/functions/low-stock-alert/message.test.ts`.
 - `supabase/config.toml` — Supabase CLI config (turns off gateway JWT checks for `admin-users`, which verifies the token itself).
 
 ## Supabase setup (one time)
@@ -169,6 +171,50 @@ Setup, once, in this order:
    ```
 
 4. Push `index.html` and `testing/` to `main`.
+
+## Low-stock emails
+
+When a stock change takes an item from above its reorder point to at or below it (the moment the Inventory tab starts flagging it **Low**), every active admin gets an email from the app's Gmail account. It lists the item, size, SKU, how many are left and the reorder point, with a link to the app. A check out that takes several items down at once sends one email listing them all. An item that stays low doesn't email again: it has to be restocked above its reorder point and drop again. Check outs, count adjustments and undoing a receipt can all set it off. Adding items, changing a reorder point and reactivating an item never do, and inactive items never email. To stop someone's emails, make them a checkout user or deactivate them (Admin → Users).
+
+Test items email only the admin who made the change, with **[TEST]** at the start of the subject, so the whole thing can be tried in test mode without bothering anyone else. Clearing test activity never emails.
+
+How it works: triggers on `apparel.transactions` queue a row in `apparel.low_stock_alerts` for each item that crossed its reorder point, then call the `low-stock-alert` Edge Function through `pg_net`. The function sends what is queued and records on each row whether it was sent (and to whom), failed (with the error) or skipped. A failed email is tried again the next time an item drops, up to 5 tries within a day. A check out never fails because of an email problem. The call from the database carries nothing, and the function only sends what is already queued, so it needs no login and is deployed with `--no-verify-jwt`. The function's address is written into the SQL file; if the app ever moves to another Supabase project, change it there and run the file again.
+
+Setup, once, in this order:
+
+1. **Gmail account.** Create a Gmail account just for the app (for example `rexiusapparel@gmail.com`). Turn on 2-Step Verification (Google Account → Security), then create an app password at <https://myaccount.google.com/apppasswords> and name it something like "Rexius Apparel". Google shows it once, as four groups of four letters.
+2. **Secrets.** From the repo folder, with the real address and app password (the spaces in the password are fine):
+
+   ```bash
+   supabase secrets set GMAIL_ADDRESS_APPAREL=your-apparel-address@gmail.com GMAIL_APP_PASSWORD_APPAREL="xxxx xxxx xxxx xxxx"
+   ```
+
+3. **SQL.** Run `supabase/migrations/20261102210000_low_stock_alerts.sql` in the SQL Editor. Its first statement turns on the `pg_net` extension; if that statement fails, turn on **pg_net** under Database → Extensions and run the file again.
+4. **Function.**
+
+   ```bash
+   supabase functions deploy low-stock-alert --no-verify-jwt
+   ```
+
+5. **Try it.** Turn on test mode and click **Clear test activity**, so the test items start at 0. Receive 5 of one Test Product size, then check 3 of them out to Test Employee. That takes it to 2, its reorder point, and a **[TEST]** email should reach you within a minute (look in Spam the first time). Clear test activity afterwards.
+
+The emails cost nothing: Gmail is free and the function's few calls a day are well inside the Supabase plan. Changing the Gmail account's password, or turning off its 2-Step Verification, cancels the app password. The emails then stop (the rows show *failed*) until you create a new app password and set it again with `supabase secrets set GMAIL_APP_PASSWORD_APPAREL="..."`; no redeploy is needed. To link the emails to a different address than the live app, set the optional `APPAREL_APP_URL` secret.
+
+If an email doesn't arrive:
+
+- Supabase dashboard → **Edge Functions → low-stock-alert → Logs** shows each call and any Gmail error.
+- In the SQL Editor, the latest alerts and what happened to each:
+
+  ```sql
+  select id, created_at, status, attempts, on_hand, reorder_threshold, sent_to, error
+  from apparel.low_stock_alerts order by id desc limit 20;
+  ```
+
+  *sent* means Gmail accepted it, so look in Spam. *failed* shows the error; "Username and Password not accepted" means the app password is wrong or was cancelled. *skipped* means there was nobody to send it to. A row still *pending* means the function was never reached or stopped before sending. Check that it's deployed and the secrets are set, then look at what the database got back (kept for 6 hours):
+
+  ```sql
+  select id, status_code, content, error_msg, created from net._http_response order by id desc limit 10;
+  ```
 
 ## Day to day
 

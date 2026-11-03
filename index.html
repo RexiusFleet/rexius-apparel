@@ -544,7 +544,7 @@ tr.low td { background: var(--orange-soft); }
             <div class="field"><label for="userPass">Temporary password</label><div class="pw-row"><input id="userPass" type="text" autocomplete="off" spellcheck="false" placeholder="At least 8 characters"><button class="btn small" type="button" id="genPassBtn">Generate</button></div></div>
             <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn primary" id="addUserBtn">Add user</button></div>
           </div>
-          <p class="hint">Checkout users can scan items out to employees (adding a new employee on the spot if needed) and see what's in stock. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, employees, vendor invoices and users.</p>
+          <p class="hint">Checkout users can scan items out to employees (adding a new employee on the spot if needed) and see what's in stock. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, employees, vendor invoices and users. Active admins also get an email when an item drops to its reorder point.</p>
         </div>
         <div class="panel quiet">
           <div class="view-head" style="margin-bottom:8px"><h3>App users</h3><button class="btn small" id="refreshUsersBtn">Refresh</button></div>
@@ -555,7 +555,7 @@ tr.low td { background: var(--orange-soft); }
       <div class="subview" id="sub-test">
         <div class="panel">
           <h3>Test mode</h3>
-          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab.</p>
+          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab. Checking a test item out down to its reorder point emails a [TEST] low-stock alert to you only.</p>
           <p class="hint" id="testSummary"></p>
           <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
           <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test invoice and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items, employees and departments are kept for next time.</p>
