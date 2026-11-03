@@ -176,6 +176,7 @@ Setup, once, in this order:
 - **Receive** — add incoming orders. Entering a unit cost updates the item's current cost, which future checkouts are charged at.
 - **Inventory** — on-hand counts with low-stock items flagged first. Admins can adjust counts after a physical check and undo mistaken transactions.
 - **Reports** — chargebacks by department for any date range, with CSV download.
+- **Display** — the half-circle button in the top bar picks Auto (follows the phone or computer's own light/dark setting), Light or Dark. Each device remembers its own choice. Printed labels are always black on white. Colours live as variables at the top of the `<style>` block, light first and then the dark overrides; a new screen should use those variables rather than fixed colours so it works in both.
 
 ## Later: annual apparel program
 

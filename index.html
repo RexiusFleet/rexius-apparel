@@ -11,13 +11,32 @@
 <meta name="theme-color" content="#4E4E50">
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<script>
+// Light or dark display, chosen per device: "auto" follows the device's own setting. Runs before the page draws so dark-mode users never see a white flash.
+const THEME_KEY = "apparel.theme";
+let themeChoice; try { themeChoice = localStorage.getItem(THEME_KEY) || "auto"; } catch (_) { themeChoice = "auto"; }
+function applyTheme() {
+  const dark = themeChoice === "dark" || (themeChoice === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#2B302E" : "#4E4E50";
+}
+function setTheme(choice) {
+  themeChoice = choice;
+  try { localStorage.setItem(THEME_KEY, choice); } catch (_) {}
+  applyTheme();
+}
+applyTheme();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root {
+  color-scheme: light;
   --paper: #F5F7F3;
   --panel: #FFFFFF;
+  --inset: #FAFBFA;
+  --field: #FFFFFF;
   --ink: #2A2D2C;
   --ink-2: #4E4E50;
   --mute: #6F7572;
@@ -25,8 +44,16 @@
   --line-strong: #4E4E50;
   --charcoal: #4E4E50;
   --charcoal-deep: #3A3A3C;
+  --btn-border: var(--charcoal);
+  --chip-bg: var(--charcoal);
+  --chip-text: #FFFFFF;
+  --pill-off: #E6E9E5;
+  --modal-edge: var(--ink);
+  --backdrop: rgba(27,36,32,.5);
   --green: #4E8F45;
   --green-deep: #3C7235;
+  --green-text: #3C7235;
+  --link: #4E8F45;
   --brand: #74C167;
   --brand-deep: #5FAD53;
   --brand-soft: #E7F3E3;
@@ -36,10 +63,37 @@
   --orange: #E4621B;
   --orange-soft: #FCEBDD;
   --red: #B9321E;
+  --danger-text: var(--red);
   --tap: 48px;
   --radius: 6px;
   --font: "Barlow", "Helvetica Neue", Arial, sans-serif;
   --font-head: "Barlow Semi Condensed", "Barlow", Arial, sans-serif;
+}
+/* Dark display. The brand colours, button greens, orange and red fills stay the same; surfaces, text and the
+   colours used as text on a surface (links, danger, active tab) change so everything keeps its contrast. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #121514;
+  --panel: #1B1F1D;
+  --inset: #161918;
+  --field: #121514;
+  --ink: #E4E8E5;
+  --ink-2: #C0C7C2;
+  --mute: #959E99;
+  --line: #353B38;
+  --line-strong: #59605C;
+  --charcoal: #2B302E;
+  --btn-border: #7A827E;
+  --chip-bg: #DDE2DE;
+  --chip-text: #151817;
+  --pill-off: #2C322F;
+  --modal-edge: var(--line-strong);
+  --backdrop: rgba(0,0,0,.6);
+  --green-text: #8ACF7E;
+  --link: #8ACF7E;
+  --brand-soft: #21372A;
+  --orange-soft: #3A2417;
+  --danger-text: #F08A78;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -53,10 +107,10 @@ h1 { font-size: 30px; font-weight: 700; }
 h2 { font-size: 26px; font-weight: 700; }
 h3 { font-size: 20px; font-weight: 600; }
 p { margin: 0 0 12px; }
-a { color: var(--green); }
+a { color: var(--link); }
 button { font: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; color: var(--ink); }
-:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
 
 /* layout */
 .shell { min-height: 100%; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
@@ -72,13 +126,15 @@ input, select, textarea { font: inherit; color: var(--ink); }
 @media (max-width: 420px) { .brand h1 { display: none; } .brand-sep { display: none; } .wordmark { height: 26px; } }
 .whoami { font-size: 14px; color: #E2E5E2; display: flex; align-items: center; gap: 10px; }
 .whoami button { background: none; border: 1px solid #8A8A8C; color: #fff; padding: 6px 10px; border-radius: var(--radius); font-size: 14px; }
+.whoami #themeBtn { padding: 6px 8px; }
+.whoami #themeBtn svg { display: block; }
 
 nav.tabs { display: flex; background: var(--panel); border-bottom: 1.5px solid var(--line-strong); overflow-x: auto; }
 nav.tabs button {
   flex: 1 0 auto; min-height: var(--tap); background: none; border: 0; border-bottom: 4px solid transparent;
   padding: 10px 14px 8px; font-weight: 600; color: var(--ink-2); white-space: nowrap; position: relative;
 }
-nav.tabs button.active { color: var(--green-deep); border-bottom-color: var(--brand); }
+nav.tabs button.active { color: var(--green-text); border-bottom-color: var(--brand); }
 nav.tabs .badge { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px;
   background: var(--orange); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; }
 
@@ -98,24 +154,24 @@ main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px))
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .field label { font-size: 14px; font-weight: 600; color: var(--ink-2); }
 .field input, .field select, .field textarea {
-  min-height: var(--tap); padding: 8px 12px; border: 1.5px solid var(--line); border-radius: var(--radius); background: #fff; width: 100%;
+  min-height: var(--tap); padding: 8px 12px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); width: 100%;
 }
 .field textarea { min-height: 72px; }
 .hint { font-size: 14px; color: var(--mute); }
 
 /* buttons */
-.btn { min-height: var(--tap); padding: 10px 18px; border-radius: var(--radius); border: 1.5px solid var(--charcoal); background: #fff; color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.btn { min-height: var(--tap); padding: 10px 18px; border-radius: var(--radius); border: 1.5px solid var(--btn-border); background: var(--panel); color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
 .btn.primary { background: var(--green); border-color: var(--green-deep); color: #fff; }
 .btn.primary:hover { background: var(--green-deep); }
 .btn.primary:active { background: #2F5C2A; }
 .btn.green { background: var(--green); border-color: var(--green-deep); color: #fff; }
-.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger { border-color: var(--danger-text); color: var(--danger-text); }
 .btn.small { min-height: 36px; padding: 4px 12px; font-size: 15px; }
 .btn.block { width: 100%; }
 .btn.big { font-size: 20px; min-height: 64px; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
-.nested { border: 1.5px solid var(--line); border-radius: var(--radius); padding: 12px 12px 0; margin-bottom: 12px; background: #FAFBFA; }
+.nested { border: 1.5px solid var(--line); border-radius: var(--radius); padding: 12px 12px 0; margin-bottom: 12px; background: var(--inset); }
 .field input[type=file] { padding: 8px; }
 .review td { vertical-align: top; }
 .review input[type=number] { width: 92px; }
@@ -127,7 +183,7 @@ main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px))
 .pill.unmatched { background: var(--red); color: #fff; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
 .check input { width: 18px; height: 18px; }
-.linkish { background: none; border: 0; padding: 0; color: var(--green-deep); font-weight: 600; text-decoration: underline; cursor: pointer; font-size: inherit; }
+.linkish { background: none; border: 0; padding: 0; color: var(--green-text); font-weight: 600; text-decoration: underline; cursor: pointer; font-size: inherit; }
 
 /* tables */
 .table-wrap { overflow-x: auto; }
@@ -139,28 +195,28 @@ tr.low td { background: var(--orange-soft); }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 13px; font-weight: 600; }
 .pill.low { background: var(--orange); color: #fff; }
 .pill.ok { background: var(--lime-soft); color: var(--ink); }
-.pill.off { background: #E6E9E5; color: var(--mute); }
+.pill.off { background: var(--pill-off); color: var(--mute); }
 .pill.admin { background: var(--green); color: #fff; }
 .pill.checkout { background: var(--lime-soft); color: var(--ink); }
-.pill.test { background: var(--charcoal); color: #fff; }
+.pill.test { background: var(--chip-bg); color: var(--chip-text); }
 .actions { white-space: nowrap; }
 .actions button { margin-right: 4px; }
 .empty { color: var(--mute); padding: 20px 0; text-align: center; }
 
 /* checkout specifics */
-#reader { width: 100%; max-width: 420px; margin: 0 auto 10px; border: 1.5px solid var(--charcoal); border-radius: var(--radius); overflow: hidden; background: #000; }
+#reader { width: 100%; max-width: 420px; margin: 0 auto 10px; border: 1.5px solid var(--btn-border); border-radius: var(--radius); overflow: hidden; background: #000; }
 #reader video { width: 100% !important; }
 .scan-hint { text-align: center; color: var(--mute); font-size: 15px; margin-bottom: 10px; }
 .cart-line { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .cart-line:last-child { border-bottom: 0; }
 .cart-line .name { font-weight: 600; }
 .cart-line .meta { font-size: 14px; color: var(--mute); }
-.qty { display: inline-flex; align-items: center; border: 1.5px solid var(--charcoal); border-radius: var(--radius); overflow: hidden; }
-.qty button { width: 44px; height: 44px; border: 0; background: #fff; font-size: 22px; font-weight: 600; }
-.qty input { width: 52px; height: 44px; border: 0; border-left: 1.5px solid var(--charcoal); border-right: 1.5px solid var(--charcoal); text-align: center; font-size: 18px; font-weight: 600; }
-.cart-line .remove { background: none; border: 0; color: var(--red); font-size: 14px; padding: 4px; }
+.qty { display: inline-flex; align-items: center; border: 1.5px solid var(--btn-border); border-radius: var(--radius); overflow: hidden; }
+.qty button { width: 44px; height: 44px; border: 0; background: var(--panel); color: var(--ink); font-size: 22px; font-weight: 600; }
+.qty input { width: 52px; height: 44px; border: 0; border-left: 1.5px solid var(--btn-border); border-right: 1.5px solid var(--btn-border); background: var(--panel); text-align: center; font-size: 18px; font-weight: 600; }
+.cart-line .remove { background: none; border: 0; color: var(--danger-text); font-size: 14px; padding: 4px; }
 .picklist { max-height: 260px; overflow-y: auto; border: 1.5px solid var(--line); border-radius: var(--radius); }
-.picklist button { display: block; width: 100%; text-align: left; background: #fff; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; min-height: var(--tap); }
+.picklist button { display: block; width: 100%; text-align: left; background: var(--panel); color: var(--ink); border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; min-height: var(--tap); }
 .picklist button:last-child { border-bottom: 0; }
 .picklist button:hover, .picklist button:focus { background: var(--lime-soft); }
 .picklist .meta { color: var(--mute); font-size: 14px; }
@@ -169,7 +225,7 @@ tr.low td { background: var(--orange-soft); }
 
 /* stat strip */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
-.stat { border: 1.5px solid var(--line); border-radius: var(--radius); background: #fff; padding: 10px 12px; }
+.stat { border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 10px 12px; }
 .stat .n { font-family: var(--font-head); font-size: 30px; font-weight: 700; line-height: 1; }
 .stat .l { font-size: 14px; color: var(--mute); margin-top: 4px; }
 .stat.warn { border-color: var(--orange); }
@@ -189,8 +245,8 @@ tr.low td { background: var(--orange-soft); }
 
 /* admin subnav */
 .subnav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-.subnav button { min-height: 40px; padding: 6px 14px; border: 1.5px solid var(--line); background: #fff; border-radius: 20px; font-weight: 600; color: var(--ink-2); }
-.subnav button.active { background: var(--charcoal); color: #fff; border-color: var(--charcoal); }
+.subnav button { min-height: 40px; padding: 6px 14px; border: 1.5px solid var(--line); background: var(--panel); border-radius: 20px; font-weight: 600; color: var(--ink-2); }
+.subnav button.active { background: var(--chip-bg); color: var(--chip-text); border-color: var(--chip-bg); }
 .subview { display: none; }
 .subview.active { display: block; }
 
@@ -198,10 +254,10 @@ tr.low td { background: var(--orange-soft); }
 .test-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: var(--orange-soft); border-bottom: 1.5px solid var(--orange); padding: 8px 16px; font-size: 15px; }
 
 /* modal */
-.modal-bg { position: fixed; inset: 0; background: rgba(27,36,32,.5); display: none; align-items: flex-end; justify-content: center; z-index: 50; padding: 0; }
+.modal-bg { position: fixed; inset: 0; background: var(--backdrop); display: none; align-items: flex-end; justify-content: center; z-index: 50; padding: 0; }
 .modal-bg.open { display: flex; }
-.modal { background: #fff; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; border-radius: 8px 8px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px)); border-top: 4px solid var(--brand); }
-@media (min-width: 640px) { .modal-bg { align-items: center; padding: 20px; } .modal { border-radius: 8px; border: 1.5px solid var(--ink); } }
+.modal { background: var(--panel); width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; border-radius: 8px 8px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px)); border-top: 4px solid var(--brand); }
+@media (min-width: 640px) { .modal-bg { align-items: center; padding: 20px; } .modal { border-radius: 8px; border: 1.5px solid var(--modal-edge); } }
 .modal h2 { margin-bottom: 14px; }
 
 /* toast */
@@ -209,6 +265,7 @@ tr.low td { background: var(--orange-soft); }
 #toast.err { border-left-color: var(--orange); }
 #toast { border-left-color: var(--brand); }
 #toast.show { display: block; }
+:root[data-theme="dark"] #toast { box-shadow: 0 0 0 1px var(--line-strong), 0 6px 20px rgba(0,0,0,.5); }
 
 /* login */
 .login-wrap {
@@ -221,19 +278,23 @@ tr.low td { background: var(--orange-soft); }
 .login .panel { border-top: 4px solid var(--brand); }
 .login .brand { margin-bottom: 22px; }
 .login .brand { display: block; text-align: center; }
-.login .brand h1 { color: var(--charcoal); font-size: 26px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.login .brand h1 { color: var(--ink-2); font-size: 26px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
 .login .brand p { margin: 2px 0 0; }
+.login-logo.on-dark { display: none; }   /* the full-colour logo's charcoal lettering disappears on dark, so dark shows the white one */
+:root[data-theme="dark"] .login-logo.on-light { display: none; }
+:root[data-theme="dark"] .login-logo.on-dark { display: block; }
+:root[data-theme="dark"] .login-wrap::before { background: linear-gradient(180deg, rgba(18,21,20,.9), rgba(18,21,20,.94)); }
 
 /* labels */
 .label-picker { display: grid; grid-template-columns: 1fr 90px; gap: 8px 12px; align-items: center; }
 .label-picker .lp-name { font-weight: 500; }
-.label-picker input { min-height: 40px; width: 80px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: var(--radius); text-align: center; }
+.label-picker input { min-height: 40px; width: 80px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); text-align: center; }
 #labelSheet { display: none; }
 
 @media print {
   body { background: #fff; }
   .shell, #toast, .modal-bg { display: none !important; }
-  #labelSheet { display: block; }
+  #labelSheet { display: block; color: #000; }   /* labels print black on white whatever the screen theme */
   @page { size: letter; margin: 0; }
   .sheet { width: 8.5in; height: 11in; padding: 0.5in 0 0 0.1875in; display: grid; grid-template-columns: repeat(3, 2.625in); column-gap: 0.125in; grid-auto-rows: 1in; page-break-after: always; }
   .label { display: flex; align-items: center; gap: 0.08in; padding: 0.06in 0.1in; overflow: hidden; }
@@ -252,7 +313,7 @@ tr.low td { background: var(--orange-soft); }
 <!-- ============================ LOGIN ============================ -->
 <div id="loginView" class="login-wrap">
   <div class="login">
-    <div class="brand"><img class="login-logo" src="assets/rexius-logo.webp" alt="Rexius" width="2000" height="391"><h1>Apparel</h1><p class="sub">High-vis inventory and accounting</p></div>
+    <div class="brand"><img class="login-logo on-light" src="assets/rexius-logo.webp" alt="Rexius" width="2000" height="391"><img class="login-logo on-dark" src="assets/rexius-logo-white.webp" alt="Rexius" width="2000" height="393"><h1>Apparel</h1><p class="sub">High-vis inventory and accounting</p></div>
     <div class="panel">
       <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username" inputmode="email"></div>
       <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password"></div>
@@ -266,7 +327,7 @@ tr.low td { background: var(--orange-soft); }
 <div id="appShell" class="shell" style="display:none">
   <header class="topbar">
     <div class="brand"><img class="wordmark" src="assets/rexius-logo-white.webp" alt="Rexius" width="2000" height="393"><span class="brand-sep" aria-hidden="true"></span><h1>Apparel</h1></div>
-    <div class="whoami"><span id="whoName"></span><button id="signOutBtn">Sign out</button></div>
+    <div class="whoami"><span id="whoName"></span><button id="themeBtn" type="button" aria-label="Light or dark display" title="Light or dark display"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button><button id="signOutBtn">Sign out</button></div>
   </header>
   <nav class="tabs" id="tabs">
     <button data-view="checkout" class="active">Check out</button>
@@ -551,6 +612,19 @@ function closeModal() { $("modalBg").classList.remove("open"); $("modal").innerH
 $("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
 
 /* =========================================================
+   DISPLAY (light or dark per device; applyTheme and setTheme are in <head>)
+   ========================================================= */
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+$("themeBtn").addEventListener("click", () => {
+  const opt = (v, label) => `<button class="btn block${v === themeChoice ? " primary" : ""}" data-pick="${v}" style="margin-bottom:8px">${v === themeChoice ? "✓ " : ""}${label}</button>`;
+  openModal(`<h2>Display</h2>
+    ${opt("auto", "Auto: follow this device")}${opt("light", "Light")}${opt("dark", "Dark")}
+    <p class="hint">Saved on this device only. Printed labels are always black on white.</p>
+    <div class="btn-row"><button class="btn" onclick="closeModal()">Close</button></div>`);
+  $("modal").querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => { setTheme(b.dataset.pick); closeModal(); }));
+});
+
+/* =========================================================
    AUTH
    ========================================================= */
 $("loginBtn").addEventListener("click", signIn);
@@ -751,7 +825,7 @@ $("empSearch").addEventListener("input", (e) => {
   });
   const q = e.target.value.trim();
   if (q.length >= 2) {
-    const add = document.createElement("button"); add.type = "button"; add.style.color = "var(--green-deep)"; add.style.fontWeight = "600";
+    const add = document.createElement("button"); add.type = "button"; add.style.color = "var(--green-text)"; add.style.fontWeight = "600";
     add.innerHTML = `＋ Add “${esc(q)}” as a new employee`;
     add.addEventListener("click", () => openQuickAddEmployee(q)); el.appendChild(add);
   }
