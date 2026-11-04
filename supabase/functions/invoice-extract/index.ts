@@ -123,28 +123,31 @@ function bytesToBase64(bytes: Uint8Array): string {
 // What we ask Claude for
 // ---------------------------------------------------------------------------
 
+// The API allows at most 16 union-typed properties (nullable fields count) in an
+// output schema. So text fields are plain strings with "" for "none", turned back
+// into null by blankToNull() below, and only the numbers are nullable (5 now).
 const Line = z.object({
   description: z.string().describe("The line's description exactly as printed, trimmed."),
-  vendor_sku: z.string().nullable().describe("The vendor's style or part number for the garment WITHOUT any size suffix (print '2400_4X' -> '2400'), or null if none is printed."),
-  color: z.string().nullable().describe("The garment colour as printed (e.g. Safety Green), or null."),
-  size: z.string().nullable().describe("The garment size for THIS entry as printed (S, M, LG, XL, 2X, 4X, Youth M, etc.), or null if the line has no size."),
-  design: z.string().nullable().describe("The design printed or embroidered on this garment: its design ID number if one is shown (e.g. '18054'), otherwise the design name. If the document lists one design for everything, use it on every line. Null if none is shown."),
-  group: z.string().nullable().describe("When an invoice is split into sections for separate orders, designs or ship-tos, a short label for this line's section (the order number or design ID). Null when the document has one section."),
+  vendor_sku: z.string().describe("The vendor's style or part number for the garment WITHOUT any size suffix (print '2400_4X' -> '2400'), or \"\" if none is printed."),
+  color: z.string().describe("The garment colour as printed (e.g. Safety Green), or \"\"."),
+  size: z.string().describe("The garment size for THIS entry as printed (S, M, LG, XL, 2X, 4X, Youth M, etc.), or \"\" if the line has no size."),
+  design: z.string().describe("The design printed or embroidered on this garment: its design ID number if one is shown (e.g. '18054'), otherwise the design name. If the document lists one design for everything, use it on every line. \"\" if none is shown."),
+  group: z.string().describe("When an invoice is split into sections for separate orders, designs or ship-tos, a short label for this line's section (the order number or design ID). \"\" when the document has one section."),
   qty: z.number().describe("Pieces on this entry. Packing slip: the quantity actually shipped/received. Invoice: the quantity billed. Handwritten corrections override the printed number."),
   qty_ordered: z.number().nullable().describe("Packing slips only: the quantity ordered, when it is printed or shown and differs from qty (backorder, short shipment, handwritten correction). Otherwise null."),
   unit_cost: z.number().nullable().describe("Invoice: garment price per piece after line discounts, excluding decoration, set-up, tax and freight. Packing slip: null unless a price is printed."),
   line_total: z.number().nullable().describe("Extended total for the line as printed, or null."),
-  item_id: z.string().nullable().describe("The id of the catalog item this line is, or null if no catalog item plausibly matches. Match on product, class/type, colour and SIZE — size must match exactly."),
-  confidence: z.enum(["high", "medium", "low", "none"]).describe("How sure you are about item_id. 'none' when item_id is null."),
-  note: z.string().nullable().describe("Anything the reviewer should know: a handwritten correction (say what was printed and what was written), a short shipment, pack conversions, ambiguity, a size we don't stock. Null if nothing."),
+  item_id: z.string().describe("The id of the catalog item this line is, or \"\" if no catalog item plausibly matches. Match on product, class/type, colour and SIZE — size must match exactly."),
+  confidence: z.enum(["high", "medium", "low", "none"]).describe("How sure you are about item_id. 'none' when item_id is \"\"."),
+  note: z.string().describe("Anything the reviewer should know: a handwritten correction (say what was printed and what was written), a short shipment, pack conversions, ambiguity, a size we don't stock. \"\" if nothing."),
 });
 
 const Extraction = z.object({
   document_type: z.enum(["invoice", "packing_slip", "other"]).describe("What this document actually is. A packing list / packing slip / delivery note lists what shipped; an invoice bills for it."),
   vendor: z.string().describe("The vendor / seller name as printed (the company that sent the goods, not the customer)."),
-  invoice_no: z.string().nullable().describe("The invoice number, or null if this is not an invoice or none is printed."),
-  order_no: z.string().nullable().describe("The vendor's order / sales order / job number, or null if none is printed."),
-  date: z.string().nullable().describe("YYYY-MM-DD. Invoice: the invoice date. Packing slip: the ship date, else the date printed on it. Null if none."),
+  invoice_no: z.string().describe("The invoice number, or \"\" if this is not an invoice or none is printed."),
+  order_no: z.string().describe("The vendor's order / sales order / job number, or \"\" if none is printed."),
+  date: z.string().describe("YYYY-MM-DD. Invoice: the invoice date. Packing slip: the ship date, else the date printed on it. \"\" if none."),
   subtotal: z.number().nullable(),
   total: z.number().nullable().describe("Grand total due as printed, or null (packing slips usually have none)."),
   lines: z.array(Line).describe("One entry per garment/product and size. Do not include decoration, set-up, freight, shipping, tax, discounts, deposits or payment lines here."),
@@ -152,12 +155,15 @@ const Extraction = z.object({
     description: z.string().describe("The charge's description as printed."),
     kind: z.enum(["decoration", "setup"]).describe("decoration = a per-piece or per-job charge for putting a logo on garments: screen printing, embroidery, heat transfer, patches, logo charges. setup = one-time screen, set-up, art, digitizing, film, reorder or reset fees."),
     amount: z.number().describe("The EXTENDED total printed for the charge (the Total Price column), not the per-piece rate."),
-    group: z.string().nullable().describe("The section label (as in lines[].group) this charge belongs to, or null if it applies to the whole document."),
+    group: z.string().describe("The section label (as in lines[].group) this charge belongs to, or \"\" if it applies to the whole document."),
   })).describe("Decoration and set-up charges billed as their own lines. They are not stock items."),
   other_charges: z.array(z.object({ description: z.string(), amount: z.number() })).describe("Freight, shipping, handling, tax and any other non-product amounts that are NOT decoration or set-up charges."),
-  notes: z.string().nullable().describe("General remarks about the document (poor photo, multiple pages, handwriting, credit memo, etc.)."),
+  notes: z.string().describe("General remarks about the document (poor photo, multiple pages, handwriting, credit memo, etc.), or \"\"."),
 });
 type ExtractionT = z.infer<typeof Extraction>;
+
+/** "" (and whitespace) back to null, so the page sees the same shape as before. */
+const blankToNull = (s: string | null | undefined): string | null => (typeof s === "string" && s.trim() !== "" ? s.trim() : null);
 
 type Item = { id: string; name: string; size: string | null; sku: string | null; category: string | null; active: boolean; is_test: boolean };
 type Alias = { vendor_key: string; alias_key: string; item_id: string };
@@ -183,11 +189,12 @@ function systemPrompt(items: Item[], docType: DocType): string {
     "- Quantities are individual pieces. If a line is priced per pack/case/dozen and the pack size is shown, convert to pieces and per-piece cost and explain in note. If the pack size is not shown, leave qty as printed and flag it in note.",
     "- unit_cost is the garment price per piece after line discounts, without decoration, set-up, tax or freight. Use the extended total divided by pieces when the printed unit price disagrees with the extension.",
     "- Decoration and set-up: screen printing, embroidery, logos, patches, heat transfers, digitizing, screen or set-up fees and reorder/reset fees are not products. Put them in add_on_charges with the printed extended total, never in lines. Do not spread or allocate them yourself; the app does that.",
-    "- If an invoice is split into sections (separate orders, designs or ship-tos), label each line's and each charge's section in `group` so logo charges stay with their own garments. Otherwise leave group null.",
+    "- If an invoice is split into sections (separate orders, designs or ship-tos), label each line's and each charge's section in `group` so logo charges stay with their own garments. Otherwise leave group empty.",
     "- Freight, shipping, handling and tax go in other_charges.",
-    "- Match each line to a catalog item only when product, design (when the catalog distinguishes it) AND size clearly agree. Vendor wording differs from ours (abbreviations, part numbers, colour codes, '4X' for '4XL', 'LG' for 'L'); use judgement on the product but never on the size. If the size is not in the catalog, item_id is null and note says which size.",
+    "- Match each line to a catalog item only when product, design (when the catalog distinguishes it) AND size clearly agree. Vendor wording differs from ours (abbreviations, part numbers, colour codes, '4X' for '4XL', 'LG' for 'L'); use judgement on the product but never on the size. If the size is not in the catalog, leave item_id empty and say in note which size.",
     "- Ignore shipping addresses and carriers; they do not matter here.",
     "- Dates are YYYY-MM-DD.",
+    "- Text fields with nothing to report are \"\" (empty), never made up.",
     "",
     "Catalog (JSON, one object per item):",
     JSON.stringify(catalog),
@@ -247,8 +254,15 @@ async function extract(admin: SupabaseClient, invoiceId: string, includeTest: bo
 
   if (response.stop_reason === "refusal") throw new HttpError(422, "The document couldn't be processed. Try a clearer scan.");
   if (response.stop_reason === "max_tokens") throw new HttpError(422, "The document is too long to read in one go. Split it into smaller files.");
-  const parsed = response.parsed_output as ExtractionT | null;
-  if (!parsed) throw new HttpError(502, "Claude returned an unreadable answer. Try again.");
+  const raw = response.parsed_output as ExtractionT | null;
+  if (!raw) throw new HttpError(502, "Claude returned an unreadable answer. Try again.");
+  const parsed = {
+    ...raw,
+    invoice_no: blankToNull(raw.invoice_no), order_no: blankToNull(raw.order_no), date: blankToNull(raw.date), notes: blankToNull(raw.notes),
+    lines: raw.lines.map((l) => ({ ...l, vendor_sku: blankToNull(l.vendor_sku), color: blankToNull(l.color), size: blankToNull(l.size), design: blankToNull(l.design),
+      group: blankToNull(l.group), item_id: blankToNull(l.item_id), note: blankToNull(l.note) })),
+    add_on_charges: (raw.add_on_charges ?? []).map((c) => ({ ...c, group: blankToNull(c.group) })),
+  };
 
   // Saved matches win over the model's guesses.
   const itemIds = new Set((items ?? []).map((i: Item) => i.id));
