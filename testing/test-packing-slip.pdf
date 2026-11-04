@@ -1,0 +1,94 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Length 2992 >>
+stream
+BT 0.93 g /F2 150 Tf 0.8192 0.5736 -0.5736 0.8192 150 230 Tm (TEST) Tj ET
+BT 0.0 g /F2 18 Tf 54.00 730.00 Td (TEST VENDOR CO.) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 714.00 Td (100 Example Way) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 701.00 Td (Testville, OR 00000) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 688.00 Td (\(555\) 010-0100) Tj ET
+BT 0.0 g /F2 24 Tf 388.66 726.00 Td (PACKING LIST) Tj ET
+BT 0.35 g /F1 10 Tf 400.00 706.00 Td (Order no.) Tj ET
+BT 0.0 g /F2 10 Tf 506.87 706.00 Td (TEST-0001) Tj ET
+BT 0.35 g /F1 10 Tf 400.00 693.00 Td (Ship date) Tj ET
+BT 0.0 g /F2 10 Tf 507.96 693.00 Td (11/02/2026) Tj ET
+BT 0.35 g /F1 10 Tf 400.00 680.00 Td (Ship via) Tj ET
+BT 0.0 g /F2 10 Tf 521.89 680.00 Td (Ground) Tj ET
+0.99 0.92 0.87 rg 54 626 504 28 re f
+BT 0.0 g /F2 10 Tf 64.00 636.00 Td (TEST DOCUMENT - NOT A REAL SHIPMENT. Made for trying out the Rexius apparel app.) Tj ET
+BT 0.35 g /F2 9 Tf 54.00 600.00 Td (SHIP TO) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 586.00 Td (Rexius) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 573.00 Td (Apparel program \(testing\)) Tj ET
+0.9 0.91 0.9 rg 54 528 504 18 re f
+BT 0.0 g /F2 8.5 Tf 58.00 534.00 Td (ITEM #) Tj ET
+BT 0.0 g /F2 8.5 Tf 114.00 534.00 Td (DESCRIPTION) Tj ET
+BT 0.0 g /F2 8.5 Tf 250.00 534.00 Td (COLOR) Tj ET
+BT 0.0 g /F2 8.5 Tf 340.00 534.00 Td (SIZE) Tj ET
+BT 0.0 g /F2 8.5 Tf 377.50 534.00 Td (ORDERED) Tj ET
+BT 0.0 g /F2 8.5 Tf 442.69 534.00 Td (SHIPPED) Tj ET
+BT 0.0 g /F2 8.5 Tf 498.76 534.00 Td (BACKORDER) Tj ET
+BT 0.0 g /F1 10 Tf 58.00 512.00 Td (TP-100-S) Tj ET
+BT 0.0 g /F1 10 Tf 114.00 512.00 Td (Test Product) Tj ET
+BT 0.0 g /F1 10 Tf 250.00 512.00 Td (Safety Green) Tj ET
+BT 0.0 g /F1 10 Tf 340.00 512.00 Td (S) Tj ET
+BT 0.0 g /F1 10 Tf 414.44 512.00 Td (4) Tj ET
+BT 0.0 g /F1 10 Tf 474.44 512.00 Td (4) Tj ET
+BT 0.0 g /F1 10 Tf 548.44 512.00 Td (0) Tj ET
+0.8 G 0.6 w 54 504 m 558 504 l S
+BT 0.0 g /F1 10 Tf 58.00 490.00 Td (TP-100-M) Tj ET
+BT 0.0 g /F1 10 Tf 114.00 490.00 Td (Test Product) Tj ET
+BT 0.0 g /F1 10 Tf 250.00 490.00 Td (Safety Green) Tj ET
+BT 0.0 g /F1 10 Tf 340.00 490.00 Td (M) Tj ET
+BT 0.0 g /F1 10 Tf 414.44 490.00 Td (6) Tj ET
+BT 0.0 g /F1 10 Tf 474.44 490.00 Td (6) Tj ET
+BT 0.0 g /F1 10 Tf 548.44 490.00 Td (0) Tj ET
+0.8 G 0.6 w 54 482 m 558 482 l S
+BT 0.0 g /F1 10 Tf 58.00 468.00 Td (TP-100-L) Tj ET
+BT 0.0 g /F1 10 Tf 114.00 468.00 Td (Test Product) Tj ET
+BT 0.0 g /F1 10 Tf 250.00 468.00 Td (Safety Green) Tj ET
+BT 0.0 g /F1 10 Tf 340.00 468.00 Td (L) Tj ET
+BT 0.0 g /F1 10 Tf 414.44 468.00 Td (2) Tj ET
+BT 0.0 g /F1 10 Tf 474.44 468.00 Td (1) Tj ET
+BT 0.0 g /F1 10 Tf 548.44 468.00 Td (1) Tj ET
+0.8 G 0.6 w 54 460 m 558 460 l S
+BT 0.0 g /F1 10 Tf 400.00 428.00 Td (Pieces shipped) Tj ET
+BT 0.0 g /F2 10 Tf 542.88 428.00 Td (11) Tj ET
+BT 0.0 g /F1 10 Tf 54.00 380.00 Td (Size L: 1 piece on backorder.) Tj ET
+BT 0.35 g /F1 10 Tf 54.00 300.00 Td (Please check your shipment against this list. Questions? Call \(555\) 010-0100.) Tj ET
+BT 0.35 g /F1 9 Tf 54.00 286.00 Td (SAMPLE FOR TESTING ONLY. Test Vendor Co. is not a real company.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Title (Test packing list TEST-0001) /Author (Rexius apparel app) >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000000354 00000 n 
+0000000456 00000 n 
+0000003500 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R /Info 7 0 R >>
+startxref
+3587
+%%EOF

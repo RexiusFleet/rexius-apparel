@@ -178,6 +178,12 @@ main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px))
 .review select { max-width: 260px; }
 .review .meta { font-size: 13px; color: var(--mute); }
 .review tr.skipped td { opacity: .45; }
+.choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.choice label { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--line); border-radius: var(--radius); padding: 10px 14px; cursor: pointer; background: var(--panel); font-size: 15px; }
+.choice label:has(input:checked) { border-color: var(--green); background: var(--lime-soft); font-weight: 600; }
+.choice input { width: 18px; height: 18px; margin: 0; }
+.callout { border-left: 4px solid var(--orange); background: var(--orange-soft); border-radius: 6px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
+.callout .btn { margin-top: 8px; }
 .pill.known { background: var(--lime-soft); color: var(--ink); }
 .pill.suggested { background: var(--orange-soft); color: var(--ink); }
 .pill.unmatched { background: var(--red); color: #fff; }
@@ -381,13 +387,18 @@ tr.low td { background: var(--orange-soft); }
     <section class="view" id="view-receive">
       <div class="view-head"><h2>Receive stock</h2><span class="sub">Add incoming orders to inventory.</span></div>
       <div class="panel">
-        <h3>Receive from an invoice</h3>
-        <p class="hint">Upload the vendor's invoice. Its lines are read and matched to your items for you to check; nothing is added to inventory until you confirm.</p>
-        <p class="hint" id="aiTestHint" style="display:none">Test mode: try it with the <a href="testing/test-invoice.pdf" download="test-invoice.pdf">sample test invoice</a>. Reading it costs a few cents, like any invoice.</p>
+        <h3>Read a packing slip or invoice</h3>
+        <p class="hint">A <strong>packing slip</strong> adds what actually arrived to inventory. An <strong>invoice</strong> updates item costs and never adds stock. You check every line before anything is saved, and the paper is kept under Admin, Documents.</p>
+        <p class="hint" id="aiTestHint" style="display:none">Test mode: try the <a href="testing/test-packing-slip.pdf" download="test-packing-slip.pdf">sample packing slip</a> and the <a href="testing/test-invoice.pdf" download="test-invoice.pdf">sample invoice</a>. Each read costs a few cents.</p>
+        <div class="field"><label>This is</label>
+          <div class="choice" id="aiTypeChoice">
+            <label><input type="radio" name="aiType" value="packing_slip" checked>A packing slip: add stock</label>
+            <label><input type="radio" name="aiType" value="invoice">An invoice: update costs</label>
+          </div></div>
         <div class="row">
-          <div class="field"><label for="aiFile">Scan or PDF</label><input id="aiFile" type="file" accept="application/pdf,image/*"></div>
-          <div class="field"><label for="aiVendor">Vendor (optional)</label><input id="aiVendor" list="vendorList" placeholder="Read from the invoice if blank" autocomplete="off"><datalist id="vendorList"></datalist></div>
-          <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn primary" id="aiReadBtn">Read invoice</button></div>
+          <div class="field"><label for="aiFile">Scan, photo or PDF</label><input id="aiFile" type="file" accept="application/pdf,image/*"></div>
+          <div class="field"><label for="aiVendor">Vendor (optional)</label><input id="aiVendor" list="vendorList" placeholder="Read from the paper if blank" autocomplete="off"><datalist id="vendorList"></datalist></div>
+          <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn primary" id="aiReadBtn">Read packing slip</button></div>
         </div>
         <div id="aiStatus" class="hint" style="display:none;margin-bottom:12px"></div>
         <div id="aiReview" style="display:none"></div>
@@ -403,17 +414,20 @@ tr.low td { background: var(--orange-soft); }
         </div>
         <p class="hint">The unit cost becomes the item's current cost and is used for future chargebacks. Leave it blank to keep the existing cost.</p>
         <div class="field"><label for="rcvNotes">Notes (optional)</label><input id="rcvNotes" placeholder="PO number, vendor, etc."></div>
-        <div class="field"><label for="rcvInvoice">Vendor invoice (optional)</label>
-          <select id="rcvInvoice"><option value="">No invoice</option><option value="__new">Attach a new invoice…</option></select></div>
+        <div class="field"><label for="rcvInvoice">Paperwork (optional)</label>
+          <select id="rcvInvoice"><option value="">None</option><option value="__new">Attach a new document…</option></select></div>
         <div class="nested" id="rcvNewInvoice" style="display:none">
-          <div class="field"><label for="rcvInvFile">Scan or PDF</label><input id="rcvInvFile" type="file" accept="application/pdf,image/*"></div>
           <div class="row">
-            <div class="field"><label for="rcvInvVendor">Vendor</label><input id="rcvInvVendor"></div>
-            <div class="field narrow"><label for="rcvInvNo">Invoice no.</label><input id="rcvInvNo"></div>
-            <div class="field narrow"><label for="rcvInvDate">Invoice date</label><input id="rcvInvDate" type="date"></div>
+            <div class="field narrow"><label for="rcvInvType">Type</label><select id="rcvInvType"><option value="packing_slip">Packing slip</option><option value="invoice">Invoice</option><option value="other">Other</option></select></div>
+            <div class="field"><label for="rcvInvFile">Scan, photo or PDF</label><input id="rcvInvFile" type="file" accept="application/pdf,image/*"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="rcvInvVendor">Vendor</label><input id="rcvInvVendor" list="vendorList"></div>
+            <div class="field narrow"><label for="rcvInvNo">Invoice or order no.</label><input id="rcvInvNo"></div>
+            <div class="field narrow"><label for="rcvInvDate">Date</label><input id="rcvInvDate" type="date"></div>
             <div class="field narrow"><label for="rcvInvTotal">Total</label><input id="rcvInvTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
           </div>
-          <p class="hint" style="margin-bottom:12px">Saved once with this line and kept selected, so the rest of the invoice's lines can be received against it.</p>
+          <p class="hint" style="margin-bottom:12px">Saved once with this line and kept selected, so the rest of its lines can be received against it. Filing it here doesn't read it.</p>
         </div>
         <button class="btn primary big block" id="confirmReceiveBtn" disabled>Add to inventory</button>
       </div>
@@ -439,7 +453,7 @@ tr.low td { background: var(--orange-soft); }
 
     <!-- ---------- REPORTS ---------- -->
     <section class="view" id="view-reports">
-      <div class="view-head"><h2>Department chargebacks</h2><span class="sub">Checkouts grouped by department for a date range.</span></div>
+      <div class="view-head"><h2>Department chargebacks</h2><span class="sub">Checkouts and vendor set-up fees, grouped by department, for a date range.</span></div>
       <div class="panel quiet">
         <div class="row">
           <div class="field narrow"><label for="repFrom">From</label><input id="repFrom" type="date"></div>
@@ -460,7 +474,7 @@ tr.low td { background: var(--orange-soft); }
         <button data-sub="labels">Print labels</button>
         <button data-sub="departments">Departments</button>
         <button data-sub="employees">Employees</button>
-        <button data-sub="invoices">Invoices</button>
+        <button data-sub="invoices">Documents</button>
         <button data-sub="users">Users</button>
         <button data-sub="test">Test mode</button>
       </div>
@@ -508,25 +522,32 @@ tr.low td { background: var(--orange-soft); }
 
       <div class="subview" id="sub-invoices">
         <div class="panel">
-          <h3>Add an invoice</h3>
-          <p class="hint">A central place for the clothing vendor's invoices. Invoices attached while receiving stock show up here too.</p>
-          <div class="field"><label for="invFile">Scan or PDF</label><input id="invFile" type="file" accept="application/pdf,image/*"></div>
+          <h3>Add a document</h3>
+          <p class="hint">Packing slips, invoices and other vendor paperwork in one place. Anything uploaded on the Receive tab is listed here too. Adding a document here only files it: to receive a packing slip or apply an invoice, press Read on its row.</p>
           <div class="row">
-            <div class="field"><label for="invVendor">Vendor</label><input id="invVendor"></div>
-            <div class="field narrow"><label for="invNo">Invoice no.</label><input id="invNo"></div>
-            <div class="field narrow"><label for="invDate">Invoice date</label><input id="invDate" type="date"></div>
+            <div class="field narrow"><label for="invType">Type</label><select id="invType"><option value="invoice">Invoice</option><option value="packing_slip">Packing slip</option><option value="other">Other</option></select></div>
+            <div class="field"><label for="invFile">Scan, photo or PDF</label><input id="invFile" type="file" accept="application/pdf,image/*"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="invVendor">Vendor</label><input id="invVendor" list="vendorList"></div>
+            <div class="field narrow"><label for="invNo">Invoice or order no.</label><input id="invNo"></div>
+            <div class="field narrow"><label for="invDate">Date</label><input id="invDate" type="date"></div>
             <div class="field narrow"><label for="invTotal">Total</label><input id="invTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+            <div class="field narrow" id="invSetupField"><label for="invSetup">Set-up fees</label><input id="invSetup" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
           </div>
           <div class="field"><label for="invNotes">Notes (optional)</label><input id="invNotes"></div>
-          <button class="btn primary" id="addInvBtn">Save invoice</button>
+          <button class="btn primary" id="addInvBtn">Save document</button>
         </div>
         <div class="panel quiet">
-          <div class="field"><label for="invoicesSearch">Search</label><input id="invoicesSearch" placeholder="Vendor, invoice number or notes" autocomplete="off"></div>
-          <div class="table-wrap"><table id="invoicesTable"><thead><tr><th>Date</th><th>Vendor</th><th>Invoice no.</th><th class="num">Total</th><th class="num">Lines received</th><th>Added by</th><th></th></tr></thead><tbody></tbody></table></div>
+          <div class="row">
+            <div class="field narrow"><label for="invoicesType">Show</label><select id="invoicesType"><option value="">All documents</option><option value="packing_slip">Packing slips</option><option value="invoice">Invoices</option><option value="other">Other</option></select></div>
+            <div class="field"><label for="invoicesSearch">Search</label><input id="invoicesSearch" placeholder="Vendor, number or notes" autocomplete="off"></div>
+          </div>
+          <div class="table-wrap"><table id="invoicesTable"><thead><tr><th>Date</th><th>Type</th><th>Vendor</th><th>Number</th><th class="num">Total</th><th>Done</th><th>Added by</th><th></th></tr></thead><tbody></tbody></table></div>
         </div>
         <div class="panel quiet">
           <h3>Vendor line matches</h3>
-          <p class="hint">How each vendor's invoice lines map to your items. A match is saved when you confirm it on the Receive tab and is reused on the next invoice from that vendor. Delete one if the vendor changes what that line means.</p>
+          <p class="hint">How each vendor's lines map to your items, by part number, colour, size and design. A match is saved when you confirm a packing slip or invoice with Remember ticked, and is reused on that vendor's next paperwork. Delete one if the vendor changes what that line means.</p>
           <div class="table-wrap"><table id="aliasTable"><thead><tr><th>Vendor</th><th>Vendor line</th><th>Our item</th><th class="num">Used</th><th></th></tr></thead><tbody></tbody></table></div>
         </div>
       </div>
@@ -557,8 +578,8 @@ tr.low td { background: var(--orange-soft); }
           <h3>Test mode</h3>
           <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab. Checking a test item out down to its reorder point emails a [TEST] low-stock alert to you only.</p>
           <p class="hint" id="testSummary"></p>
-          <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample test invoice</a></div>
-          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test invoice and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items, employees and departments are kept for next time.</p>
+          <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-packing-slip.pdf" download="test-packing-slip.pdf">Sample packing slip</a><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample invoice</a></div>
+          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items, employees and departments are kept for next time.</p>
         </div>
       </div>
     </section>
@@ -898,7 +919,8 @@ $("confirmReceiveBtn").addEventListener("click", async () => {
   const btn = $("confirmReceiveBtn"); btn.disabled = true;
   let invoice_id = $("rcvInvoice").value || null;
   if (invoice_id === "__new") {
-    const inv = await createInvoice({ file: $("rcvInvFile").files[0], vendor: $("rcvInvVendor").value, invoice_no: $("rcvInvNo").value, invoice_date: $("rcvInvDate").value, total: $("rcvInvTotal").value, notes: null });
+    const type = $("rcvInvType").value, no = $("rcvInvNo").value;
+    const inv = await createInvoice({ file: $("rcvInvFile").files[0], vendor: $("rcvInvVendor").value, doc_type: type, invoice_no: type === "invoice" ? no : null, order_no: type === "invoice" ? null : no, invoice_date: $("rcvInvDate").value, total: $("rcvInvTotal").value, notes: null });
     if (!inv) { btn.disabled = false; return; }
     invoice_id = inv.id;
     $("rcvInvFile").value = ""; $("rcvInvVendor").value = ""; $("rcvInvNo").value = ""; $("rcvInvDate").value = ""; $("rcvInvTotal").value = "";
@@ -914,12 +936,58 @@ $("confirmReceiveBtn").addEventListener("click", async () => {
 $("rcvInvoice").addEventListener("change", () => { $("rcvNewInvoice").style.display = $("rcvInvoice").value === "__new" ? "" : "none"; });
 
 /* =========================================================
-   RECEIVE FROM AN INVOICE (admin only; uses the invoice-extract function)
+   READ A PACKING SLIP OR INVOICE (admin only; uses the invoice-extract function)
+   A packing slip adds what arrived to stock (apparel.receive_packing_slip).
+   An invoice sets item costs: garment price plus logo charges, never set-up
+   fees (apparel.apply_invoice_costs). Nothing is saved until the review is
+   confirmed. Set-up fees go to department SETUP_FEE_DEPT_CODE in the report.
    ========================================================= */
 const INVOICE_EXTRACT_URL = `${SUPABASE_URL}/functions/v1/invoice-extract`;
+const SETUP_FEE_DEPT_CODE = "10";
+const DOC_TYPES = { packing_slip: "Packing slip", invoice: "Invoice", other: "Other" };
+// Matching keys. Same rules as supabase/functions/invoice-extract/spread.ts; keep the two identical.
 const normKey = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-// Same rule as aliasKey in supabase/functions/invoice-extract/spread.ts: a part number alone can cover every size and colour, so both are part of the key.
-const aliasKey = (sku, desc, color, size) => { const base = normKey(sku) || normKey(desc); return base ? [base, normKey(color), normKey(size)].filter(Boolean).join(" | ") : ""; };
+function normVendor(s) {
+  let t = normKey(s).replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  for (let prev = ""; prev !== t; ) { prev = t; t = t.replace(/ (inc|incorporated|llc|ltd|limited|co|corp|corporation|company)$/, "").trim(); }
+  return t;
+}
+const SIZE_WORDS = {
+  s: "s", sm: "s", sml: "s", small: "s",
+  m: "m", md: "m", med: "m", medium: "m",
+  l: "l", lg: "l", lrg: "l", large: "l",
+  xl: "xl", xlg: "xl", xlarge: "xl",
+  "2x": "2xl", "2xl": "2xl", xxl: "2xl", "2xlarge": "2xl", xxlarge: "2xl",
+  "3x": "3xl", "3xl": "3xl", xxxl: "3xl", "3xlarge": "3xl",
+  "4x": "4xl", "4xl": "4xl", xxxxl: "4xl", "4xlarge": "4xl",
+  "5x": "5xl", "5xl": "5xl",
+  os: "os", osfa: "os", onesize: "os", onesizefitsall: "os",
+};
+function normSize(s) {
+  let t = normKey(s).replace(/[\s.\-_]/g, "");
+  if (!t) return "";
+  let youth = "";
+  const y = /^(youth|yth|y)(.+)$/.exec(t);
+  if (y && Object.hasOwn(SIZE_WORDS, y[2])) { youth = "y"; t = y[2]; }
+  return youth + (Object.hasOwn(SIZE_WORDS, t) ? SIZE_WORDS[t] : t);
+}
+function normDesign(s) { const k = normKey(s); const id = /\d{3,}/.exec(k); return id ? id[0] : k; }
+function baseSku(sku, size) {
+  const s = normKey(sku), want = normSize(size);
+  if (!s || !want) return s;
+  const m = /^(.+?)[\s_\-/.]+([a-z0-9]+)$/.exec(s);
+  return m && normSize(m[2]) === want ? m[1] : s;
+}
+function aliasKey(sku, description, color, size, design) {
+  const base = baseSku(sku, size) || normKey(description);
+  if (!base) return "";
+  return [base, normKey(color), normSize(size), normDesign(design)].filter(Boolean).join(" | ");
+}
+const money3 = (n) => { const v = Number(n) || 0; return "$" + (Math.abs(v * 100 - Math.round(v * 100)) < 1e-6 ? v.toFixed(2) : v.toFixed(3)); };
+// The line's description, with its size added when the description doesn't already say it.
+const withSize = (l) => !l.size || normKey(l.description).split(/[^a-z0-9]+/).includes(normKey(l.size)) ? l.description : `${l.description} ${l.size}`;
+const plural = (n, word, many) => `${n} ${n === 1 ? word : (many || word + "s")}`;
+
 async function callFunction(url, payload, name) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error("You're signed out. Sign in again.");
@@ -933,129 +1001,256 @@ async function callFunction(url, payload, name) {
   return body;
 }
 function aiStatus(msg) { const el = $("aiStatus"); el.style.display = msg ? "" : "none"; el.textContent = msg || ""; }
+function clearAi() { S.ai = null; $("aiReview").style.display = "none"; $("aiReview").innerHTML = ""; }
 function renderVendorList() {
-  const names = [...new Set([...S.invoices.filter(rowInScope).map((v) => v.vendor), ...S.aliases.filter((a) => inScope(a.item_id)).map((a) => a.vendor)])].filter(Boolean).sort();
+  const names = [...new Set([...S.invoices.filter(rowInScope).map((v) => v.vendor), ...S.aliases.filter((a) => inScope(a.item_id)).map((a) => a.vendor)])].filter((n) => n && n !== "Unknown vendor").sort();
   $("vendorList").innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
 }
+const aiType = () => document.querySelector('input[name="aiType"]:checked')?.value || "packing_slip";
+document.querySelectorAll('input[name="aiType"]').forEach((r) => r.addEventListener("change", () => {
+  $("aiReadBtn").textContent = aiType() === "invoice" ? "Read invoice" : "Read packing slip";
+}));
 $("aiReadBtn").addEventListener("click", async () => {
-  const file = $("aiFile").files[0]; if (!file) return toast("Choose the invoice scan or PDF first.", true);
+  const file = $("aiFile").files[0]; if (!file) return toast("Choose the scan, photo or PDF first.", true);
   const btn = $("aiReadBtn"); btn.disabled = true;
   aiStatus("Uploading…");
-  const inv = await createInvoice({ file, vendor: $("aiVendor").value.trim() || "Unknown vendor", invoice_no: null, invoice_date: null, total: null, notes: null });
-  if (!inv) { btn.disabled = false; aiStatus(""); return; }
+  const doc = await createInvoice({ file, vendor: $("aiVendor").value.trim() || "Unknown vendor", doc_type: aiType() });
+  if (!doc) { btn.disabled = false; aiStatus(""); return; }
   $("aiFile").value = ""; $("aiVendor").value = "";
-  await readInvoice(inv);
+  await readDocument(doc);
   btn.disabled = false;
 });
-async function readInvoice(inv) {
-  aiStatus("Reading the invoice… this usually takes 20–60 seconds.");
+async function readDocument(doc) {
+  const kind = doc.doc_type === "invoice" ? "invoice" : "packing slip";
+  clearAi();
+  aiStatus(`Reading the ${kind}… this usually takes 20–60 seconds.`);
   let res;
-  try { res = await callFunction(INVOICE_EXTRACT_URL, { invoice_id: inv.id, include_test: S.testMode }, "invoice-extract"); }
+  try { res = await callFunction(INVOICE_EXTRACT_URL, { invoice_id: doc.id, include_test: S.testMode }, "invoice-extract"); }
   catch (e) {
     aiStatus("");
     $("aiReview").style.display = "";
-    $("aiReview").innerHTML = `<p class="hint">Couldn't read the invoice: ${esc(e.message)}<br>The file is saved under Admin → Invoices, so nothing is lost.</p>
+    $("aiReview").innerHTML = `<p class="hint">Couldn't read the ${kind}: ${esc(e.message)}<br>The file is saved under Admin, Documents, so nothing is lost.</p>
       <div class="btn-row"><button class="btn" id="aiRetry">Try again</button><button class="btn" id="aiDismiss">Dismiss</button></div>`;
-    $("aiRetry").addEventListener("click", () => readInvoice(inv));
-    $("aiDismiss").addEventListener("click", () => { $("aiReview").style.display = "none"; $("aiReview").innerHTML = ""; });
+    $("aiRetry").addEventListener("click", () => readDocument(doc));
+    $("aiDismiss").addEventListener("click", clearAi);
     return;
   }
   aiStatus("");
-  if (!!inv.is_test !== S.testMode) return;   // test mode was switched while it read; the invoice stays saved on its own side
-  const vendorGuess = (inv.vendor && inv.vendor !== "Unknown vendor") ? inv.vendor : (res.header.vendor || inv.vendor);
+  if (!!doc.is_test !== S.testMode) return;   // test mode was switched while it read; the document stays saved on its own side
+  const radio = document.querySelector(`input[name="aiType"][value="${doc.doc_type === "invoice" ? "invoice" : "packing_slip"}"]`);
+  if (radio && !radio.checked) { radio.checked = true; radio.dispatchEvent(new Event("change")); }
+  const h = res.header || {};
+  const c = res.charges || { decoration: [], setup: [], decoration_total: 0, setup_total: 0, units: 0, grouped: false, unassigned: 0 };
+  const cents = (n) => n == null || n === "" ? "" : Number(n).toFixed(2);
   S.ai = {
-    invoice: inv,
-    header: { vendor: vendorGuess, invoice_no: res.header.invoice_no || "", invoice_date: res.header.invoice_date || "", total: res.header.total ?? "" },
+    doc, type: doc.doc_type === "invoice" ? "invoice" : "packing_slip", detected: h.document_type || null,
+    header: { vendor: doc.vendor && doc.vendor !== "Unknown vendor" ? doc.vendor : (h.vendor || doc.vendor), invoice_no: h.invoice_no || "", order_no: h.order_no || "", date: h.date || "",
+      total: h.total == null ? "" : cents(h.total), setup_fees: c.setup_total ? cents(c.setup_total) : "" },
+    charges: c, decoOn: true, other_charges: res.other_charges || [], notes: res.notes || "",
     lines: (res.lines || []).map((l) => {
       const match = l.item_id && inScope(l.item_id) ? l.match : "none";   // a test item outside test mode (or a real one inside it) can't be picked here
-      return { ...l, match, qty: Math.max(0, Math.round(Number(l.qty) || 0)), unit_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), landed_cost: l.unit_cost == null ? "" : Number(l.unit_cost).toFixed(2), base_cost: l.base_unit_cost == null ? "" : Number(l.base_unit_cost).toFixed(2), item_id: match === "none" ? "" : l.item_id, skip: false, remember: match !== "alias" };
-    }),
-    spread: res.spread ? { ...res.spread, on: true } : null,
-    other_charges: res.other_charges || [], notes: res.notes || ""
+      return { ...l, match, item_id: match === "none" ? "" : l.item_id, qty: String(Math.max(0, Math.round(Number(l.qty) || 0))),
+        base_cost: cents(l.base_unit_cost), landed: cents(l.unit_cost), new_cost: cents(l.unit_cost), skip: false, remember: match !== "alias" };
+    })
   };
   renderAiReview();
 }
+
+// ---- review screens ----
+function aiItemOpts(sel) {
+  return `<option value="">— choose an item —</option>` + S.items.filter((i) => (i.active || i.id === sel) && inScope(i.id))
+    .map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(itemLabel(i))}${i.sku ? " · " + esc(i.sku) : ""}</option>`).join("");
+}
+const aiPill = (l) => l.match === "alias" ? `<span class="pill known">Known match</span>` : l.item_id ? `<span class="pill suggested">Suggested${l.confidence && l.confidence !== "high" ? " · " + l.confidence : ""}</span>` : `<span class="pill unmatched">Needs an item</span>`;
+function aiLineCell(l, extra) {
+  const bits = [l.color, l.size && "Size " + l.size, l.vendor_sku && "Part " + l.vendor_sku, l.design && "Design " + l.design].filter(Boolean);
+  return `${esc(l.description)}${bits.length ? `<div class="meta">${esc(bits.join(" · "))}</div>` : ""}${extra || ""}${l.note ? `<div class="meta">${esc(l.note)}</div>` : ""}`;
+}
+const aiItemCell = (l, i, extra) => `<td><select data-i="${i}" data-f="item_id">${aiItemOpts(l.item_id)}</select><div style="margin-top:4px">${aiPill(l)}${extra || ""}</div></td>`;
+const aiChecks = (l, i) => `<td><label class="check"><input type="checkbox" ${l.remember ? "checked" : ""} data-i="${i}" data-f="remember">Remember</label><br><label class="check" style="margin-top:6px"><input type="checkbox" ${l.skip ? "checked" : ""} data-i="${i}" data-f="skip">Skip line</label></td>`;
+function aiTypeCallout(a) {
+  if (!a.detected || a.detected === a.type || a.detected === "other") return "";
+  const other = a.type === "invoice" ? "packing_slip" : "invoice";
+  const says = a.detected === "invoice" ? "an invoice" : "a packing slip";
+  const does = a.type === "invoice" ? "Reading it as an invoice only updates costs. It won't add the stock." : "Reading it as a packing slip adds stock and leaves costs alone.";
+  return `<div class="callout">This looks like ${says}. ${does}<br><button class="btn small" id="aiSwitch" data-to="${other}">Treat it as ${says}</button></div>`;
+}
 function renderAiReview() {
   const a = S.ai; if (!a) return;
-  const itemOpts = (sel) => `<option value="">— choose an item —</option>` + S.items.filter((i) => (i.active || i.id === sel) && inScope(i.id)).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(itemLabel(i))}${i.sku ? " · " + esc(i.sku) : ""}</option>`).join("");
-  const pill = (l) => l.match === "alias" ? `<span class="pill known">Known match</span>` : l.item_id ? `<span class="pill suggested">Suggested${l.confidence && l.confidence !== "high" ? " · " + l.confidence : ""}</span>` : `<span class="pill unmatched">Needs an item</span>`;
-  const rows = a.lines.map((l, i) => `<tr class="${l.skip ? "skipped" : ""}" data-row="${i}">
-      <td>${esc(l.description)}${l.color || l.size ? `<div class="meta">${esc([l.color, l.size && "Size " + l.size].filter(Boolean).join(" · "))}</div>` : ""}${l.vendor_sku ? `<div class="meta">SKU ${esc(l.vendor_sku)}</div>` : ""}${a.spread?.on && l.base_cost !== "" ? `<div class="meta">${money(l.base_cost)} invoice price + ${money(a.spread.per_unit)} decoration and set-up</div>` : ""}${l.note ? `<div class="meta">${esc(l.note)}</div>` : ""}${l.line_total != null ? `<div class="meta">Line total ${money(l.line_total)}</div>` : ""}</td>
-      <td><input type="number" min="1" inputmode="numeric" value="${l.qty}" data-i="${i}" data-f="qty"></td>
-      <td><input type="number" min="0" step="0.01" inputmode="decimal" value="${esc(l.unit_cost)}" data-i="${i}" data-f="unit_cost"></td>
-      <td><select data-i="${i}" data-f="item_id">${itemOpts(l.item_id)}</select><div style="margin-top:4px">${pill(l)}</div></td>
-      <td><label class="check"><input type="checkbox" ${l.remember ? "checked" : ""} data-i="${i}" data-f="remember">Remember</label><br><label class="check" style="margin-top:6px"><input type="checkbox" ${l.skip ? "checked" : ""} data-i="${i}" data-f="skip">Skip line</label></td>
-    </tr>`).join("");
-  const active = a.lines.filter((l) => !l.skip);
-  const sum = active.reduce((t, l) => t + (Number(l.qty) || 0) * (Number(l.unit_cost) || 0), 0);
-  const charges = a.other_charges.length ? `<p class="hint">Not received as stock: ${a.other_charges.map((c) => `${esc(c.description)} ${money(c.amount)}`).join(", ")}.</p>` : "";
   $("aiReview").style.display = "";
-  $("aiReview").innerHTML = `
+  $("aiReview").innerHTML = a.type === "invoice" ? invoiceReviewHtml(a) : slipReviewHtml(a);
+  $("aiConfirm").addEventListener("click", a.type === "invoice" ? confirmInvoiceCosts : confirmSlipReceive);
+  $("aiCancel").addEventListener("click", () => { if (confirm("Discard this review? The file stays saved under Admin, Documents.")) clearAi(); });
+  if ($("aiSwitch")) $("aiSwitch").addEventListener("click", (e) => { syncAiHeader(); S.ai.type = e.target.dataset.to; renderAiReview(); });
+}
+const slipPieces = (a) => a.lines.filter((l) => !l.skip).reduce((t, l) => t + (/^\d+$/.test(String(l.qty).trim()) ? parseInt(l.qty) : 0), 0);
+function slipReviewHtml(a) {
+  const rows = a.lines.map((l, i) => {
+    const short = l.qty_ordered != null && Number(l.qty_ordered) !== Number(l.qty) ? `<div class="meta"><strong>Ordered ${esc(l.qty_ordered)}</strong>, receiving what arrived</div>` : "";
+    return `<tr class="${l.skip ? "skipped" : ""}"><td>${aiLineCell(l, short)}</td>
+      <td><input type="number" min="1" step="1" inputmode="numeric" value="${esc(l.qty)}" data-i="${i}" data-f="qty"></td>
+      ${aiItemCell(l, i, l.item_id ? ` <span class="meta">${onHandOf(l.item_id)} on hand now</span>` : "")}${aiChecks(l, i)}</tr>`;
+  }).join("");
+  const active = a.lines.filter((l) => !l.skip), pieces = slipPieces(a);
+  return `
+    <div class="row">
+      <div class="field"><label for="aiHVendor">Vendor</label><input id="aiHVendor" list="vendorList" value="${esc(a.header.vendor)}"></div>
+      <div class="field narrow"><label for="aiHOrder">Order no.</label><input id="aiHOrder" value="${esc(a.header.order_no)}"></div>
+      <div class="field narrow"><label for="aiHDate">Date</label><input id="aiHDate" type="date" value="${esc(a.header.date)}"></div>
+    </div>
+    ${aiTypeCallout(a)}${a.notes ? `<p class="hint">${esc(a.notes)}</p>` : ""}
+    <div class="table-wrap"><table class="review"><thead><tr><th>Packing slip line</th><th>Received</th><th>Our item</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No garment lines were found on this document.</td></tr>`}</tbody></table></div>
+    <p class="hint"><span id="aiPieces">${plural(pieces, "piece")}</span> on ${plural(active.length, "line")} will be added to inventory. Costs don't change here; the invoice sets them. "Remember" saves the item you chose for that vendor line next time.</p>
+    <div class="btn-row"><button class="btn primary big" id="aiConfirm" ${active.length ? "" : "disabled"}>Receive ${plural(pieces, "piece")}</button><button class="btn" id="aiCancel">Cancel</button></div>`;
+}
+// Repeated items on one invoice get one cost: the quantity-weighted average.
+function combineInvoiceLines(lines, decoOn) {
+  const groups = new Map();
+  for (const l of lines) { if (!groups.has(l.item_id)) groups.set(l.item_id, []); groups.get(l.item_id).push(l); }
+  return [...groups.entries()].map(([item_id, ls]) => {
+    const w = (l) => Math.max(0, parseInt(l.qty) || 0);
+    const avg = (get) => {
+      const vals = ls.filter((l) => get(l) !== "" && get(l) != null && !isNaN(Number(get(l))));
+      if (!vals.length) return null;
+      const tw = vals.reduce((t, l) => t + w(l), 0);
+      return tw ? vals.reduce((t, l) => t + w(l) * Number(get(l)), 0) / tw : vals.reduce((t, l) => t + Number(get(l)), 0) / vals.length;
+    };
+    const cost = avg((l) => String(l.new_cost).trim());
+    return { item_id, qty: ls.reduce((t, l) => t + w(l), 0), invoice_price: avg((l) => l.base_cost), decoration: decoOn ? avg((l) => l.decoration_per_unit) : 0,
+      new_cost: cost == null ? null : Math.round(cost * 100) / 100, description: ls.map(withSize).join("; ").slice(0, 200), lines: ls.length };
+  });
+}
+function invoiceReviewHtml(a) {
+  const c = a.charges;
+  const rows = a.lines.map((l, i) => {
+    const it = l.item_id ? S.items.find((x) => x.id === l.item_id) : null;
+    const parts = l.base_cost === "" ? `<div class="meta">No garment price was read. Enter the cost.</div>`
+      : `<div class="meta">${money(l.base_cost)} garment${a.decoOn && Number(l.decoration_per_unit) ? ` + ${money3(l.decoration_per_unit)} logos` : ""}</div>`;
+    return `<tr class="${l.skip ? "skipped" : ""}"><td>${aiLineCell(l, parts)}</td>
+      <td class="num">${esc(l.qty)}</td>
+      <td><input type="number" min="0" step="0.01" inputmode="decimal" value="${esc(l.new_cost)}" data-i="${i}" data-f="new_cost">${it ? `<div class="meta">now ${money(it.unit_cost)}</div>` : ""}</td>
+      ${aiItemCell(l, i)}${aiChecks(l, i)}</tr>`;
+  }).join("");
+  const active = a.lines.filter((l) => !l.skip && l.item_id);
+  const combined = combineInvoiceLines(active, a.decoOn);
+  const repeats = combined.filter((g) => g.lines > 1).map((g) => itemLabel(S.items.find((i) => i.id === g.item_id) || { name: "An item" }));
+  const deco = c.decoration.length ? `<div class="nested" style="padding-bottom:12px">
+      <label class="check"><input type="checkbox" id="aiDeco" ${a.decoOn ? "checked" : ""}><strong>Add logo charges to item cost</strong></label>
+      <div class="hint" style="margin-top:6px">${esc(c.decoration.map((x) => `${x.description} ${money(x.amount)}`).join(" · "))} = ${money(c.decoration_total)}${c.grouped ? ", each kept with its own order's garments" : c.units ? `, ${money3((c.decoration_total - (c.unassigned || 0)) / c.units)} on each of ${c.units} pieces` : ""}.${c.unassigned ? ` ${money(c.unassigned)} had no garments to go on and is left out.` : ""}</div></div>` : "";
+  const garments = a.lines.reduce((t, l) => t + (l.base_cost === "" ? 0 : (parseInt(l.qty) || 0) * Number(l.base_cost)), 0);
+  const setupNow = Number(a.header.setup_fees) || 0, other = a.other_charges.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+  const sum = garments + (c.decoration_total || 0) + setupNow + other;
+  const total = a.header.total === "" ? null : Number(a.header.total);
+  const check = total == null ? "" : Math.abs(sum - total) < 0.05 ? `, matching the invoice total.` : `. <strong>That is ${money(Math.abs(sum - total))} ${sum > total ? "more" : "less"} than the invoice total of ${money(total)}</strong>, so check the lines.`;
+  return `
     <div class="row">
       <div class="field"><label for="aiHVendor">Vendor</label><input id="aiHVendor" list="vendorList" value="${esc(a.header.vendor)}"></div>
       <div class="field narrow"><label for="aiHNo">Invoice no.</label><input id="aiHNo" value="${esc(a.header.invoice_no)}"></div>
-      <div class="field narrow"><label for="aiHDate">Invoice date</label><input id="aiHDate" type="date" value="${esc(a.header.invoice_date)}"></div>
-      <div class="field narrow"><label for="aiHTotal">Invoice total</label><input id="aiHTotal" type="number" min="0" step="0.01" inputmode="decimal" value="${a.header.total === "" || a.header.total == null ? "" : Number(a.header.total).toFixed(2)}"></div>
+      <div class="field narrow"><label for="aiHDate">Invoice date</label><input id="aiHDate" type="date" value="${esc(a.header.date)}"></div>
+      <div class="field narrow"><label for="aiHTotal">Invoice total</label><input id="aiHTotal" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(a.header.total)}"></div>
     </div>
-    ${a.notes ? `<p class="hint">${esc(a.notes)}</p>` : ""}
-    ${a.spread ? `<div class="hint" style="margin:8px 0"><label class="check"><input type="checkbox" id="aiSpread" ${a.spread.on ? "checked" : ""}><strong>Spread decoration and set-up fees across the items</strong></label><br>${esc(a.spread.charges.map((c) => c.description + " " + money(c.amount)).join(" · "))} = ${money(a.spread.total)} over ${a.spread.units} pieces, ${money(a.spread.per_unit)} each, added to every line's unit cost. Untick to receive at the invoice prices instead.</div>` : ""}
-    <div class="table-wrap"><table class="review"><thead><tr><th>Invoice line</th><th>Qty</th><th>Unit cost</th><th>Our item</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No product lines were found on this document.</td></tr>`}</tbody></table></div>
-    ${charges}
-    <p class="hint">${active.length} line${active.length === 1 ? "" : "s"} to receive · product total ${money(sum)}${a.header.total !== "" && a.header.total != null ? ` · invoice total ${money(a.header.total)}` : ""}${a.spread?.on && a.header.total !== "" && a.header.total != null && Math.abs(sum - Number(a.header.total)) >= 0.005 && Math.abs(sum - Number(a.header.total)) < 1 ? " (a few cents apart because each cost is rounded to the cent)" : ""}. "Remember" saves the item you chose as the match for that vendor line next time.</p>
-    <div class="btn-row"><button class="btn primary big" id="aiConfirm" ${active.length ? "" : "disabled"}>Add ${active.length} line${active.length === 1 ? "" : "s"} to inventory</button><button class="btn" id="aiCancel">Cancel</button></div>`;
-  $("aiConfirm").addEventListener("click", confirmAiReceive);
-  $("aiCancel").addEventListener("click", () => { if (confirm("Discard this review? The invoice file stays saved under Admin → Invoices.")) { S.ai = null; $("aiReview").style.display = "none"; $("aiReview").innerHTML = ""; } });
+    ${aiTypeCallout(a)}${a.notes ? `<p class="hint">${esc(a.notes)}</p>` : ""}
+    ${deco}
+    <div class="row">
+      <div class="field narrow"><label for="aiHSetup">Set-up fees</label><input id="aiHSetup" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(a.header.setup_fees)}" placeholder="0.00"></div>
+      <div class="field"><label>&nbsp;</label><p class="hint" style="margin:6px 0 0">${c.setup.length ? esc(c.setup.map((x) => `${x.description} ${money(x.amount)}`).join(" · ")) + ". " : ""}Charged to department ${SETUP_FEE_DEPT_CODE} in the chargeback report. Never added to item cost.</p></div>
+    </div>
+    ${a.other_charges.length ? `<p class="hint">Not in item cost: ${esc(a.other_charges.map((x) => `${x.description} ${money(x.amount)}`).join(", "))}.</p>` : ""}
+    <div class="table-wrap"><table class="review"><thead><tr><th>Invoice line</th><th class="num">Billed</th><th>New cost</th><th>Our item</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No garment lines were found on this document.</td></tr>`}</tbody></table></div>
+    <p class="hint">Garments ${money(garments)} + logos ${money(c.decoration_total || 0)} + set-up ${money(setupNow)}${other ? ` + other ${money(other)}` : ""} = ${money(sum)}${check}${repeats.length ? ` ${esc(repeats.join(", "))} ${repeats.length === 1 ? "is" : "are"} on more than one line and will get the average cost.` : ""} No stock is added from an invoice.</p>
+    <div class="btn-row"><button class="btn primary big" id="aiConfirm" ${combined.length || setupNow ? "" : "disabled"}>${combined.length ? `Update ${plural(combined.length, "item cost")}` : "Record set-up fees"}</button><button class="btn" id="aiCancel">Cancel</button></div>`;
 }
 $("aiReview").addEventListener("change", (e) => {
-  if (e.target.id === "aiSpread" && S.ai?.spread) {
-    syncAiHeader(); S.ai.spread.on = e.target.checked;
-    S.ai.lines.forEach((l) => { const c = S.ai.spread.on ? l.landed_cost : l.base_cost; if (c !== "") l.unit_cost = c; });
+  if (!S.ai) return;
+  if (e.target.id === "aiDeco") {
+    syncAiHeader(); S.ai.decoOn = e.target.checked;
+    S.ai.lines.forEach((l) => { const c = S.ai.decoOn ? l.landed : l.base_cost; if (c !== "") l.new_cost = c; });
     return renderAiReview();
   }
-  const el = e.target.closest("[data-i]"); if (!el || !S.ai) return;
+  if (e.target.id === "aiHSetup" || e.target.id === "aiHTotal") { syncAiHeader(); return renderAiReview(); }
+  const el = e.target.closest("[data-i]"); if (!el) return;
   const l = S.ai.lines[Number(el.dataset.i)], f = el.dataset.f;
   if (f === "skip" || f === "remember") l[f] = el.checked;
   else if (f === "item_id") { l.item_id = el.value; if (l.match === "alias" || !l.remember) l.remember = !!el.value; if (l.match === "alias") l.match = "changed"; }
   else l[f] = el.value;
-  if (f !== "qty" && f !== "unit_cost") { syncAiHeader(); renderAiReview(); }
+  if (f !== "qty" && f !== "new_cost") { syncAiHeader(); renderAiReview(); }
 });
 $("aiReview").addEventListener("input", (e) => {
   const el = e.target.closest("[data-i]"); if (!el || !S.ai) return;
-  const f = el.dataset.f; if (f === "qty" || f === "unit_cost") S.ai.lines[Number(el.dataset.i)][f] = el.value;
+  const f = el.dataset.f; if (f !== "qty" && f !== "new_cost") return;
+  S.ai.lines[Number(el.dataset.i)][f] = el.value;
+  if (S.ai.type === "packing_slip" && f === "qty") {   // keep the count current without redrawing the field being typed in
+    const n = slipPieces(S.ai); $("aiPieces").textContent = plural(n, "piece"); $("aiConfirm").textContent = `Receive ${plural(n, "piece")}`;
+  }
 });
 function syncAiHeader() {
-  if (!S.ai || !$("aiHVendor")) return;
-  S.ai.header = { vendor: $("aiHVendor").value, invoice_no: $("aiHNo").value, invoice_date: $("aiHDate").value, total: $("aiHTotal").value };
+  const a = S.ai; if (!a || !$("aiHVendor")) return;
+  a.header.vendor = $("aiHVendor").value; a.header.date = $("aiHDate").value;
+  if ($("aiHOrder")) a.header.order_no = $("aiHOrder").value;
+  if ($("aiHNo")) a.header.invoice_no = $("aiHNo").value;
+  if ($("aiHTotal")) a.header.total = $("aiHTotal").value;
+  if ($("aiHSetup")) a.header.setup_fees = $("aiHSetup").value;
 }
-async function confirmAiReceive() {
+async function saveMatches(lines, vendor) {
+  const rows = lines.filter((l) => l.remember && l.item_id).map((l) => ({
+    vendor, vendor_key: normVendor(vendor), vendor_sku: l.vendor_sku || null, description: l.description || null, color: l.color || null, size: l.size || null, design: l.design || null,
+    alias_key: aliasKey(l.vendor_sku, l.description, l.color, l.size, l.design), item_id: l.item_id, created_by: S.session.user.id, updated_at: new Date().toISOString()
+  })).filter((r) => r.alias_key && r.vendor_key);
+  const seen = new Set(); const uniq = rows.filter((r) => !seen.has(r.alias_key) && seen.add(r.alias_key));
+  if (!uniq.length) return;
+  const { error } = await sb.from("vendor_aliases").upsert(uniq, { onConflict: "vendor_key,alias_key" });
+  if (error) console.warn("Couldn't save vendor matches", error);
+}
+const whenDone = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+async function confirmSlipReceive() {
   syncAiHeader();
   const a = S.ai, lines = a.lines.filter((l) => !l.skip);
-  const vendor = a.header.vendor.trim(); if (!vendor) return toast("Enter the vendor's name.", true);
+  const vendor = a.header.vendor.trim(); if (!vendor || vendor === "Unknown vendor") return toast("Enter the vendor's name.", true);
   for (let i = 0; i < a.lines.length; i++) {
     const l = a.lines[i]; if (l.skip) continue;
-    const qty = parseInt(l.qty), cost = String(l.unit_cost).trim() === "" ? null : Number(l.unit_cost);
-    if (!l.item_id) return toast(`Line ${i + 1} needs an item (or tick Skip line).`, true);
-    if (!qty || qty < 1) return toast(`Line ${i + 1} needs a quantity of 1 or more.`, true);
-    if (cost !== null && (isNaN(cost) || cost < 0)) return toast(`Line ${i + 1}: unit cost must be a number.`, true);
+    if (!l.item_id) return toast(`Line ${i + 1} needs an item, or tick Skip line.`, true);
+    if (!/^\d+$/.test(String(l.qty).trim()) || parseInt(l.qty) < 1) return toast(`Line ${i + 1} needs a whole quantity of 1 or more.`, true);
   }
+  const order = a.header.order_no.trim();
+  const dup = order && S.invoices.find((v) => v.id !== a.doc.id && rowInScope(v) && v.doc_type === "packing_slip" && v.processed_at && (v.order_no || "").trim().toLowerCase() === order.toLowerCase() && normVendor(v.vendor) === normVendor(vendor));
+  if (dup && !confirm(`Order ${order} from ${dup.vendor} was already received on ${whenDone(dup.processed_at)}. Receive it again? The stock would be counted twice.`)) return;
+  const cur = S.invoices.find((v) => v.id === a.doc.id);
+  if (cur?.processed_at && !confirm(`This packing slip was already received on ${whenDone(cur.processed_at)}. Receive it again? The stock would be counted twice.`)) return;
   const btn = $("aiConfirm"); btn.disabled = true;
+  const p_lines = lines.map((l) => ({ item_id: l.item_id, qty: parseInt(l.qty),
+    notes: `Packing slip: ${withSize(l)}${l.qty_ordered != null && Number(l.qty_ordered) !== parseInt(l.qty) ? ` (ordered ${l.qty_ordered})` : ""}` }));
+  const { error } = await sb.rpc("receive_packing_slip", { p_document_id: a.doc.id, p_header: { vendor, order_no: order, date: a.header.date || "" }, p_lines });
+  if (error) { btn.disabled = false; return fail(error, "Couldn't receive the packing slip"); }
+  await saveMatches(lines, vendor);
+  const n = p_lines.reduce((t, l) => t + l.qty, 0);
+  toast(`Received ${plural(n, "piece")} on ${plural(p_lines.length, "line")} from ${vendor}`);
+  clearAi(); await loadRefs(); window.scrollTo(0, 0);
+}
+async function confirmInvoiceCosts() {
+  syncAiHeader();
+  const a = S.ai, lines = a.lines.filter((l) => !l.skip);
+  const vendor = a.header.vendor.trim(); if (!vendor || vendor === "Unknown vendor") return toast("Enter the vendor's name.", true);
+  for (let i = 0; i < a.lines.length; i++) {
+    const l = a.lines[i]; if (l.skip) continue;
+    if (!l.item_id) return toast(`Line ${i + 1} needs an item, or tick Skip line.`, true);
+    const c = String(l.new_cost).trim();
+    if (c === "" || isNaN(Number(c)) || Number(c) < 0) return toast(`Line ${i + 1} needs a cost of 0 or more.`, true);
+  }
+  const setupRaw = String(a.header.setup_fees ?? "").trim(), setup = setupRaw === "" ? 0 : Number(setupRaw);
+  if (isNaN(setup) || setup < 0) return toast("Set-up fees must be 0 or more.", true);
   const totalRaw = String(a.header.total ?? "").trim();
-  const hdr = { vendor, invoice_no: a.header.invoice_no.trim() || null, invoice_date: a.header.invoice_date || null, total: totalRaw === "" ? null : Number(totalRaw) };
-  const up = await sb.from("invoices").update(hdr).eq("id", a.invoice.id);
-  if (up.error) { btn.disabled = false; return fail(up.error, "Couldn't save the invoice details"); }
-  const rows = lines.map((l) => ({ type: "receive", item_id: l.item_id, qty_change: parseInt(l.qty), unit_cost: String(l.unit_cost).trim() === "" ? null : Number(l.unit_cost), performed_by: S.session.user.id, invoice_id: a.invoice.id, notes: `Invoice line: ${l.description}${l.size ? " " + l.size : ""}${a.spread?.on && l.base_cost !== "" ? " (cost includes decoration and set-up)" : ""}`.slice(0, 200) }));
-  const ins = await sb.from("transactions").insert(rows);
-  if (ins.error) { btn.disabled = false; return fail(ins.error, "Couldn't add the stock"); }
-  const aliasRows = lines.filter((l) => l.remember && l.item_id).map((l) => ({
-    vendor, vendor_key: normKey(vendor), vendor_sku: l.vendor_sku || null, description: l.description || null,
-    alias_key: aliasKey(l.vendor_sku, l.description, l.color, l.size), item_id: l.item_id, created_by: S.session.user.id, updated_at: new Date().toISOString()
-  })).filter((r) => r.alias_key);
-  const seen = new Set(); const uniq = aliasRows.filter((r) => !seen.has(r.alias_key) && seen.add(r.alias_key));
-  if (uniq.length) { const al = await sb.from("vendor_aliases").upsert(uniq, { onConflict: "vendor_key,alias_key" }); if (al.error) console.warn("Couldn't save vendor matches", al.error); }
-  const n = rows.reduce((t, r) => t + r.qty_change, 0);
-  toast(`Received ${n} unit${n === 1 ? "" : "s"} on ${rows.length} line${rows.length === 1 ? "" : "s"} from ${vendor}`);
-  S.ai = null; $("aiReview").style.display = "none"; $("aiReview").innerHTML = "";
-  await loadRefs(); window.scrollTo(0, 0);
+  if (totalRaw !== "" && (isNaN(Number(totalRaw)) || Number(totalRaw) < 0)) return toast("Invoice total must be a number.", true);
+  const combined = combineInvoiceLines(lines, a.decoOn);
+  if (!combined.length && !setup) return toast("There's nothing to save: no lines and no set-up fees.", true);
+  const cur = S.invoices.find((v) => v.id === a.doc.id);
+  if (cur?.processed_at && !confirm(`This invoice was already applied on ${whenDone(cur.processed_at)}. Apply it again? Its costs are set again and its set-up fees replaced.`)) return;
+  const btn = $("aiConfirm"); btn.disabled = true;
+  const p_lines = combined.map(({ lines: _n, ...r }) => r);
+  const { data, error } = await sb.rpc("apply_invoice_costs", { p_document_id: a.doc.id, p_header: { vendor, invoice_no: a.header.invoice_no.trim(), date: a.header.date || "", total: totalRaw, setup_fees: setupRaw }, p_lines });
+  if (error) { btn.disabled = false; return fail(error, "Couldn't update the costs"); }
+  await saveMatches(lines, vendor);
+  toast(`Updated ${plural(data ?? combined.length, "item cost")}${setup ? `. Set-up fees of ${money(setup)} go to department ${SETUP_FEE_DEPT_CODE}` : ""}`);
+  clearAi(); await loadRefs(); window.scrollTo(0, 0);
 }
 async function loadAliases() {
   if (!isAdmin()) return;
@@ -1066,8 +1261,11 @@ async function loadAliases() {
 function renderAliases() {
   const tb = $("aliasTable").querySelector("tbody");
   const rows = S.aliases.filter((a) => inScope(a.item_id));
-  tb.innerHTML = rows.length ? rows.map((a) => `<tr><td>${esc(a.vendor)}</td><td>${a.vendor_sku ? `SKU ${esc(a.vendor_sku)}` : ""}${a.vendor_sku && a.description ? `<div class="meta">${esc(a.description)}</div>` : esc(a.description || "")}</td><td>${esc(a.item ? itemLabel(a.item) : "")}</td><td class="num">${a.uses}</td><td class="actions"><button class="btn small danger" data-adelete="${a.id}">Delete</button></td></tr>`).join("")
-    : `<tr><td colspan="5" class="empty">No ${S.testMode ? "test " : ""}matches saved yet. They appear after you receive from an invoice.</td></tr>`;
+  tb.innerHTML = rows.length ? rows.map((a) => {
+    const bits = [a.color, a.size && "Size " + a.size, a.design && "Design " + a.design].filter(Boolean).join(" · ");
+    return `<tr><td>${esc(a.vendor)}</td><td>${a.vendor_sku ? `Part ${esc(a.vendor_sku)}` : esc(a.description || "")}${a.vendor_sku && a.description ? `<div class="meta">${esc(a.description)}</div>` : ""}${bits ? `<div class="meta">${esc(bits)}</div>` : ""}</td><td>${esc(a.item ? itemLabel(a.item) : "")}</td><td class="num">${a.uses}</td><td class="actions"><button class="btn small danger" data-adelete="${a.id}">Delete</button></td></tr>`;
+  }).join("")
+    : `<tr><td colspan="5" class="empty">No ${S.testMode ? "test " : ""}matches saved yet. They appear after you confirm a packing slip or invoice.</td></tr>`;
 }
 $("aliasTable").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-adelete]"); if (!b) return;
@@ -1079,100 +1277,140 @@ $("aliasTable").addEventListener("click", async (e) => {
 });
 
 /* =========================================================
-   VENDOR INVOICES (admin only)
+   DOCUMENTS (admin only): packing slips, invoices and other
+   vendor paperwork, stored in apparel.invoices + the private bucket
    ========================================================= */
 const INVOICE_BUCKET = "apparel-invoices";
-const invoiceLabel = (v) => `${v.vendor}${v.invoice_no ? " #" + v.invoice_no : ""}${v.invoice_date ? " · " + fmtDate(v.invoice_date) : ""}`;
 const fmtDate = (ymd) => ymd ? new Date(ymd + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+const docNumber = (v) => v.doc_type === "invoice" ? (v.invoice_no ? "#" + v.invoice_no : "") : v.order_no ? "order " + v.order_no : v.invoice_no ? "#" + v.invoice_no : "";
+const docLabel = (v) => `${DOC_TYPES[v.doc_type] || "Document"}: ${v.vendor}${docNumber(v) ? " " + docNumber(v) : ""}`;
+const invoiceLabel = (v) => `${docLabel(v)}${v.invoice_date ? " · " + fmtDate(v.invoice_date) : ""}`;
 async function loadInvoices() {
   if (!isAdmin()) return;
-  const { data, error } = await sb.from("invoices").select("*, lines:transactions(count)").order("invoice_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
-  if (error) return fail(error, "Couldn't load invoices");
-  S.invoices = (data || []).map((v) => ({ ...v, line_count: v.lines?.[0]?.count ?? 0 }));
+  const { data, error } = await sb.from("invoices").select("*, lines:transactions(count), costs:cost_updates(count)").order("invoice_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
+  if (error) return fail(error, "Couldn't load documents");
+  S.invoices = (data || []).map((v) => ({ ...v, line_count: v.lines?.[0]?.count ?? 0, cost_count: v.costs?.[0]?.count ?? 0 }));
   renderInvoices(); renderInvoiceSelect(); renderVendorList();
 }
 function renderInvoiceSelect() {
   const sel = $("rcvInvoice"), cur = sel.value;
-  const recent = S.invoices.filter(rowInScope).slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
-  sel.innerHTML = `<option value="">No invoice</option><option value="__new">Attach a new invoice…</option>${recent}`;
+  const recent = S.invoices.filter(rowInScope).filter((v) => v.doc_type !== "invoice").slice(0, 40).map((v) => `<option value="${v.id}">${esc(invoiceLabel(v))}</option>`).join("");
+  sel.innerHTML = `<option value="">None</option><option value="__new">Attach a new document…</option>${recent}`;
   sel.value = cur; if (sel.value !== cur) sel.value = "";
 }
 // Uploads the file, then saves the row. Returns the new row, or null after showing an error.
-async function createInvoice({ file, vendor, invoice_no, invoice_date, total, notes }) {
+async function createInvoice({ file, vendor, doc_type = "other", invoice_no, order_no, invoice_date, total, setup_fees, notes }) {
   vendor = (vendor || "").trim();
-  if (!file) { toast("Choose the invoice scan or PDF first.", true); return null; }
+  if (!file) { toast("Choose the scan, photo or PDF first.", true); return null; }
   if (!vendor) { toast("Enter the vendor's name.", true); return null; }
-  const totalNum = String(total ?? "").trim() === "" ? null : Number(total);
-  if (totalNum !== null && (isNaN(totalNum) || totalNum < 0)) { toast("Total must be a number.", true); return null; }
+  const num = (x, what) => { const t = String(x ?? "").trim(); if (t === "") return null; const n = Number(t); if (isNaN(n) || n < 0) throw new Error(`${what} must be a number.`); return n; };
+  let totalNum, setupNum;
+  try { totalNum = num(total, "Total"); setupNum = num(setup_fees, "Set-up fees"); } catch (e) { toast(e.message, true); return null; }
   const id = crypto.randomUUID();
-  const safeName = (file.name || "invoice").replace(/[^\w.\-]+/g, "_").slice(-80);
+  const safeName = (file.name || "document").replace(/[^\w.\-]+/g, "_").slice(-80);
   const file_path = `${id}/${safeName}`;
   toast("Uploading…");
   const up = await sb.storage.from(INVOICE_BUCKET).upload(file_path, file, { contentType: file.type || undefined, upsert: false });
   if (up.error) { fail(up.error, "Couldn't upload the file"); return null; }
-  const row = { id, vendor, invoice_no: (invoice_no || "").trim() || null, invoice_date: invoice_date || null, total: totalNum, notes: (notes || "").trim() || null,
+  const row = { id, vendor, doc_type, invoice_no: (invoice_no || "").trim() || null, order_no: (order_no || "").trim() || null, invoice_date: invoice_date || null, total: totalNum,
+    setup_fees: doc_type === "invoice" ? setupNum : null, notes: (notes || "").trim() || null,
     file_path, file_name: file.name || safeName, content_type: file.type || null, size_bytes: file.size, uploaded_by: S.session.user.id };
   if (S.testMode) row.is_test = true;
   const { data, error } = await sb.from("invoices").insert(row).select("*").single();
-  if (error) { await sb.storage.from(INVOICE_BUCKET).remove([file_path]); fail(error, "Couldn't save the invoice"); return null; }
-  toast(`Saved invoice from ${vendor}`);
+  if (error) { await sb.storage.from(INVOICE_BUCKET).remove([file_path]); fail(error, "Couldn't save the document"); return null; }
+  toast(`Saved ${(DOC_TYPES[doc_type] || "document").toLowerCase()} from ${vendor}`);
   await loadInvoices();
   return data;
 }
 async function openInvoice(id) {
   const v = S.invoices.find((x) => x.id === id); if (!v) return;
-  const { data, error } = await sb.storage.from(INVOICE_BUCKET).createSignedUrl(v.file_path, 600);
+  const [{ data, error }, costs] = await Promise.all([
+    sb.storage.from(INVOICE_BUCKET).createSignedUrl(v.file_path, 600),
+    v.cost_count ? sb.from("cost_updates").select("qty, old_cost, new_cost, created_at, item:items(name,size)").eq("invoice_id", v.id).order("created_at") : Promise.resolve({ data: [] })
+  ]);
   if (error) return fail(error, "Couldn't open the file");
+  const costList = (costs.data || []).length ? `<p class="hint"><strong>Costs set from this invoice</strong><br>${costs.data.map((c) => `${esc(c.item ? itemLabel(c.item) : "An item")}: ${money(c.old_cost)} to ${money(c.new_cost)}`).join("<br>")}</p>` : "";
+  const setup = Number(v.setup_fees) ? `<p class="hint">Set-up fees ${money(v.setup_fees)}, charged to department ${SETUP_FEE_DEPT_CODE}.</p>` : "";
   // A link in a modal works on every browser (iOS Safari blocks window.open after an await).
-  openModal(`<h2>${esc(invoiceLabel(v))}</h2><p class="hint">${esc(v.file_name)}${v.size_bytes ? " · " + (v.size_bytes / 1048576).toFixed(1) + " MB" : ""}${v.notes ? "<br>" + esc(v.notes) : ""}</p>
+  openModal(`<h2>${esc(invoiceLabel(v))}</h2><p class="hint">${esc(v.file_name)}${v.size_bytes ? " · " + (v.size_bytes / 1048576).toFixed(1) + " MB" : ""}${v.notes ? "<br>" + esc(v.notes) : ""}</p>${setup}${costList}
     <div class="btn-row"><a class="btn primary" href="${data.signedUrl}" target="_blank" rel="noopener" onclick="closeModal()">Open file</a><button class="btn" onclick="closeModal()">Close</button></div>`);
 }
+$("invType").addEventListener("change", () => { $("invSetupField").style.display = $("invType").value === "invoice" ? "" : "none"; });
 $("addInvBtn").addEventListener("click", async () => {
   const btn = $("addInvBtn"); btn.disabled = true;
-  const inv = await createInvoice({ file: $("invFile").files[0], vendor: $("invVendor").value, invoice_no: $("invNo").value, invoice_date: $("invDate").value, total: $("invTotal").value, notes: $("invNotes").value });
-  btn.disabled = false; if (!inv) return;
-  ["invFile", "invVendor", "invNo", "invDate", "invTotal", "invNotes"].forEach((k) => ($(k).value = ""));
+  const type = $("invType").value, no = $("invNo").value;
+  const doc = await createInvoice({ file: $("invFile").files[0], vendor: $("invVendor").value, doc_type: type, invoice_no: type === "invoice" ? no : null, order_no: type === "invoice" ? null : no,
+    invoice_date: $("invDate").value, total: $("invTotal").value, setup_fees: $("invSetup").value, notes: $("invNotes").value });
+  btn.disabled = false; if (!doc) return;
+  ["invFile", "invVendor", "invNo", "invDate", "invTotal", "invSetup", "invNotes"].forEach((k) => ($(k).value = ""));
 });
 $("invoicesSearch").addEventListener("input", renderInvoices);
+$("invoicesType").addEventListener("change", renderInvoices);
+function docDone(v) {
+  if (v.doc_type === "packing_slip") return v.line_count ? `Received, ${plural(v.line_count, "line")}` : v.processed_at ? "Received" : `<span class="meta">Not received yet</span>`;
+  if (v.doc_type === "invoice") {
+    const parts = [v.cost_count ? `Costs set on ${plural(v.cost_count, "item")}` : "", Number(v.setup_fees) ? `set-up ${money(v.setup_fees)}` : ""].filter(Boolean);
+    return parts.length ? parts.join(", ") : v.processed_at ? "Applied" : `<span class="meta">Not applied yet</span>`;
+  }
+  return v.line_count ? `Attached to ${plural(v.line_count, "receive line")}` : "";
+}
 function renderInvoices() {
-  const q = $("invoicesSearch").value.trim().toLowerCase();
+  const q = $("invoicesSearch").value.trim().toLowerCase(), type = $("invoicesType").value;
   const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid === S.session.user.id ? (S.me.display_name || "you") : "—");
   const scoped = S.invoices.filter(rowInScope);
-  const rows = scoped.filter((v) => !q || `${v.vendor} ${v.invoice_no || ""} ${v.notes || ""} ${v.file_name}`.toLowerCase().includes(q));
+  const rows = scoped.filter((v) => (!type || v.doc_type === type) && (!q || `${v.vendor} ${v.invoice_no || ""} ${v.order_no || ""} ${v.notes || ""} ${v.file_name}`.toLowerCase().includes(q)));
   const tb = $("invoicesTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((v) => `<tr><td>${esc(fmtDate(v.invoice_date))}</td><td>${esc(v.vendor)}</td><td>${esc(v.invoice_no || "")}</td><td class="num">${v.total == null ? "" : money(v.total)}</td><td class="num">${v.line_count}</td><td>${esc(byName(v.uploaded_by))}</td><td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button><button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">${scoped.length ? "No matches." : S.testMode ? "No test invoices yet." : "No invoices yet."}</td></tr>`;
+  tb.innerHTML = rows.length ? rows.map((v) => {
+    const canRead = (v.doc_type === "packing_slip" || v.doc_type === "invoice") && !v.processed_at;
+    return `<tr><td>${esc(fmtDate(v.invoice_date) || whenDone(v.created_at))}</td><td>${esc(DOC_TYPES[v.doc_type] || "")}</td><td>${esc(v.vendor)}</td><td>${esc(docNumber(v))}</td><td class="num">${v.total == null ? "" : money(v.total)}</td><td>${docDone(v)}</td><td>${esc(byName(v.uploaded_by))}</td>
+      <td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button>${canRead ? `<button class="btn small" data-iread="${v.id}">Read</button>` : ""}<button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`;
+  }).join("")
+    : `<tr><td colspan="8" class="empty">${scoped.length ? "No matches." : S.testMode ? "No test documents yet." : "No documents yet."}</td></tr>`;
 }
 $("invoicesTable").addEventListener("click", async (e) => {
-  const op = e.target.closest("[data-iopen]"), ed = e.target.closest("[data-iedit]"), dl = e.target.closest("[data-idelete]");
+  const op = e.target.closest("[data-iopen]"), rd = e.target.closest("[data-iread]"), ed = e.target.closest("[data-iedit]"), dl = e.target.closest("[data-idelete]");
   if (op) return openInvoice(op.dataset.iopen);
+  if (rd) {
+    const v = S.invoices.find((x) => x.id === rd.dataset.iread);
+    const radio = document.querySelector(`input[name="aiType"][value="${v.doc_type}"]`); if (radio) { radio.checked = true; radio.dispatchEvent(new Event("change")); }
+    await showView("receive");
+    return readDocument(v);
+  }
   if (dl) {
     const v = S.invoices.find((x) => x.id === dl.dataset.idelete);
-    const warn = v.line_count ? ` It is attached to ${v.line_count} receive line${v.line_count === 1 ? "" : "s"}; those stay, just without the invoice link.` : "";
-    if (!confirm(`Delete the invoice from ${v.vendor}${v.invoice_no ? " #" + v.invoice_no : ""} and its file?${warn}`)) return;
+    const warn = [v.line_count ? ` Its ${plural(v.line_count, "receive line")} stay in inventory, just without the link.` : "", v.cost_count ? ` The costs it set stay as they are.` : "", Number(v.setup_fees) ? ` Its ${money(v.setup_fees)} of set-up fees leave the report.` : ""].join("");
+    if (!confirm(`Delete ${docLabel(v)} and its file?${warn}`)) return;
     const { error } = await sb.from("invoices").delete().eq("id", v.id);
-    if (error) return fail(error, "Couldn't delete the invoice");
+    if (error) return fail(error, "Couldn't delete the document");
     const rm = await sb.storage.from(INVOICE_BUCKET).remove([v.file_path]);
-    if (rm.error) console.warn("Invoice row deleted but the file was not removed", rm.error);
-    toast("Invoice deleted"); await loadInvoices();
+    if (rm.error) console.warn("Document row deleted but the file was not removed", rm.error);
+    toast("Document deleted"); await loadInvoices();
   }
   if (ed) {
     const v = S.invoices.find((x) => x.id === ed.dataset.iedit);
-    openModal(`<h2>Edit invoice</h2><p class="hint">${esc(v.file_name)} — to change the file, delete this invoice and add it again.</p>
-      <div class="field"><label for="ieVendor">Vendor</label><input id="ieVendor" value="${esc(v.vendor)}"></div>
+    const typeOpts = Object.entries(DOC_TYPES).map(([k, t]) => `<option value="${k}" ${k === v.doc_type ? "selected" : ""}>${t}</option>`).join("");
+    openModal(`<h2>Edit document</h2><p class="hint">${esc(v.file_name)}. To change the file, delete this document and add it again.${v.processed_at ? " Editing doesn't undo what it already received or set." : ""}</p>
+      <div class="row"><div class="field narrow"><label for="ieType">Type</label><select id="ieType">${typeOpts}</select></div><div class="field"><label for="ieVendor">Vendor</label><input id="ieVendor" value="${esc(v.vendor)}"></div></div>
       <div class="row">
         <div class="field narrow"><label for="ieNo">Invoice no.</label><input id="ieNo" value="${esc(v.invoice_no || "")}"></div>
-        <div class="field narrow"><label for="ieDate">Invoice date</label><input id="ieDate" type="date" value="${esc(v.invoice_date || "")}"></div>
+        <div class="field narrow"><label for="ieOrder">Order no.</label><input id="ieOrder" value="${esc(v.order_no || "")}"></div>
+        <div class="field narrow"><label for="ieDate">Date</label><input id="ieDate" type="date" value="${esc(v.invoice_date || "")}"></div>
+      </div>
+      <div class="row">
         <div class="field narrow"><label for="ieTotal">Total</label><input id="ieTotal" type="number" min="0" step="0.01" inputmode="decimal" value="${v.total == null ? "" : Number(v.total).toFixed(2)}"></div>
+        <div class="field narrow"><label for="ieSetup">Set-up fees</label><input id="ieSetup" type="number" min="0" step="0.01" inputmode="decimal" value="${v.setup_fees == null ? "" : Number(v.setup_fees).toFixed(2)}"></div>
       </div>
       <div class="field"><label for="ieNotes">Notes</label><input id="ieNotes" value="${esc(v.notes || "")}"></div>
       <div class="btn-row"><button class="btn primary" id="ieSave">Save changes</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
     $("ieSave").addEventListener("click", async () => {
       const vendor = $("ieVendor").value.trim(); if (!vendor) return toast("Enter the vendor's name.", true);
-      const tRaw = $("ieTotal").value.trim(); const total = tRaw === "" ? null : Number(tRaw);
-      if (total !== null && (isNaN(total) || total < 0)) return toast("Total must be a number.", true);
-      const { error } = await sb.from("invoices").update({ vendor, invoice_no: $("ieNo").value.trim() || null, invoice_date: $("ieDate").value || null, total, notes: $("ieNotes").value.trim() || null }).eq("id", v.id);
-      if (error) return fail(error, "Couldn't save"); closeModal(); toast("Invoice saved"); await loadInvoices();
+      const num = (id, what) => { const t = $(id).value.trim(); if (t === "") return null; const n = Number(t); if (isNaN(n) || n < 0) throw new Error(`${what} must be a number.`); return n; };
+      let total, setup_fees;
+      try { total = num("ieTotal", "Total"); setup_fees = num("ieSetup", "Set-up fees"); } catch (err) { return toast(err.message, true); }
+      const doc_type = $("ieType").value;
+      const { error } = await sb.from("invoices").update({ doc_type, vendor, invoice_no: $("ieNo").value.trim() || null, order_no: $("ieOrder").value.trim() || null, invoice_date: $("ieDate").value || null,
+        total, setup_fees: doc_type === "invoice" ? setup_fees : null, notes: $("ieNotes").value.trim() || null }).eq("id", v.id);
+      if (error) return fail(error, "Couldn't save"); closeModal(); toast("Document saved"); await loadInvoices();
     });
   }
 });
@@ -1221,7 +1459,7 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no)").order("created_at", { ascending: false }).limit(60));
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
@@ -1229,7 +1467,7 @@ async function loadActivity() {
   const tb = $("actTable").querySelector("tbody");
   tb.innerHTML = data.length ? data.map((t) => {
     const what = { checkout: "Checked out", receive: "Received", adjust: "Adjusted" }[t.type];
-    const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">Invoice: ${esc(t.invoice.vendor)}${t.invoice.invoice_no ? " #" + esc(t.invoice.invoice_no) : ""}</button></div>` : "";
+    const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">${esc(docLabel(t.invoice))}</button></div>` : "";
     const who = t.type === "checkout" ? `${esc(t.employee?.full_name || "")}<div class="meta sub">${esc(t.department?.name || "")}</div>` : esc(t.notes || "") + inv;
     return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${who}</td><td>${esc(byName(t.performed_by))}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}">Undo</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
@@ -1262,31 +1500,53 @@ function populateReportDepts() {
   $("repDept").innerHTML = `<option value="">All</option>` + S.departments.filter(rowInScope).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join(""); $("repDept").value = cur;
 }
 $("runReportBtn").addEventListener("click", runReport);
+// Set-up fees from vendor invoices are always charged to the department whose code is SETUP_FEE_DEPT_CODE.
+// In test mode they go to that department among the test ones, else the first test department.
+function setupFeeDept() {
+  const scoped = S.departments.filter(rowInScope);
+  return scoped.find((d) => String(d.code || "").trim() === SETUP_FEE_DEPT_CODE) || (S.testMode ? scoped[0] : null) || null;
+}
 async function runReport() {
   const from = $("repFrom").value, to = $("repTo").value;
   if (!from || !to) return toast("Choose both dates.", true);
   const start = new Date(from + "T00:00:00"), end = new Date(to + "T00:00:00"); end.setDate(end.getDate() + 1);
   let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, item:items(name,size,sku,category), department:departments(id,name,code), employee:employees(full_name)")
     .eq("type", "checkout").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at");
-  if ($("repDept").value) q = q.eq("department_id", $("repDept").value);
+  const deptFilter = $("repDept").value;
+  if (deptFilter) q = q.eq("department_id", deptFilter);
   q = scopeToMode(q);
-  const { data, error } = q ? await q : { data: [] };
-  if (error) return fail(error, "Report failed");
+  const [tx, inv] = await Promise.all([
+    q ? q : Promise.resolve({ data: [] }),
+    sb.from("invoices").select("id, doc_type, vendor, invoice_no, invoice_date, setup_fees, created_at, is_test").eq("doc_type", "invoice").gt("setup_fees", 0)
+  ]);
+  if (tx.error) return fail(tx.error, "Report failed");
+  if (inv.error) return fail(inv.error, "Couldn't load set-up fees");
+  const data = tx.data || [];
   if (!S.users.length) await loadUserNames();
-  S.report = { from, to, rows: data, test: S.testMode };
-  $("csvBtn").disabled = !data.length;
+  const feeDept = setupFeeDept();
+  const fees = deptFilter && deptFilter !== feeDept?.id ? [] : (inv.data || []).filter((v) => rowInScope(v) && v.doc_type === "invoice" && Number(v.setup_fees) > 0)
+    .map((v) => ({ ...v, date: v.invoice_date || localDate(new Date(v.created_at)) }))
+    .filter((v) => v.date >= from && v.date <= to).sort((a, b) => a.date.localeCompare(b.date));
+  S.report = { from, to, rows: data, fees, feeDept, test: S.testMode };
+  $("csvBtn").disabled = !data.length && !fees.length;
   const out = $("reportOut");
-  if (!data.length) { out.innerHTML = `<div class="empty">No ${S.testMode ? "test " : ""}checkouts between ${from} and ${to}.</div>`; return; }
+  if (!data.length && !fees.length) { out.innerHTML = `<div class="empty">No ${S.testMode ? "test " : ""}checkouts or set-up fees between ${from} and ${to}.</div>`; return; }
 
   const groups = {};
-  data.forEach((t) => { const k = t.department?.id || "none"; (groups[k] = groups[k] || { dept: t.department, rows: [], total: 0, units: 0 }); groups[k].rows.push(t); groups[k].total += -t.qty_change * Number(t.unit_cost || 0); groups[k].units += -t.qty_change; });
+  const groupFor = (key, dept) => (groups[key] = groups[key] || { dept, rows: [], fees: [], total: 0, units: 0 });
+  data.forEach((t) => { const g = groupFor(t.department?.id || "none", t.department); g.rows.push(t); g.total += -t.qty_change * Number(t.unit_cost || 0); g.units += -t.qty_change; });
+  fees.forEach((f) => { const g = groupFor(feeDept?.id || "setup", feeDept || { name: `Department ${SETUP_FEE_DEPT_CODE}`, code: SETUP_FEE_DEPT_CODE, missing: true }); g.fees.push(f); g.total += Number(f.setup_fees); });
   const grand = Object.values(groups).reduce((a, g) => a + g.total, 0);
   const gunits = Object.values(groups).reduce((a, g) => a + g.units, 0);
-  let html = (S.testMode ? `<p class="hint">Test mode: only test-item checkouts are included, so these are not real chargebacks.</p>` : "") + `<div class="stats"><div class="stat"><div class="n">${money(grand)}</div><div class="l">total to charge back</div></div><div class="stat"><div class="n">${gunits}</div><div class="l">units issued</div></div><div class="stat"><div class="n">${Object.keys(groups).length}</div><div class="l">departments</div></div></div>`;
+  const feeTotal = fees.reduce((a, f) => a + Number(f.setup_fees), 0);
+  let html = (S.testMode ? `<p class="hint">Test mode: only test-item checkouts and test invoices are included, so these are not real chargebacks.</p>` : "")
+    + `<div class="stats"><div class="stat"><div class="n">${money(grand)}</div><div class="l">total to charge back</div></div><div class="stat"><div class="n">${gunits}</div><div class="l">units issued</div></div>${feeTotal ? `<div class="stat"><div class="n">${money(feeTotal)}</div><div class="l">vendor set-up fees</div></div>` : ""}<div class="stat"><div class="n">${Object.keys(groups).length}</div><div class="l">departments</div></div></div>`;
   Object.values(groups).sort((a, b) => b.total - a.total).forEach((g) => {
-    html += `<div class="group panel quiet"><div class="group-head"><h3>${esc(g.dept?.name || "No department")}${g.dept?.code ? ` <span class="sub">(${esc(g.dept.code)})</span>` : ""}</h3><span class="total">${money(g.total)}</span></div>
+    html += `<div class="group panel quiet"><div class="group-head"><h3>${esc(g.dept?.name || "No department")}${g.dept?.code && !g.dept.missing ? ` <span class="sub">(${esc(g.dept.code)})</span>` : ""}</h3><span class="total">${money(g.total)}</span></div>
+      ${g.dept?.missing ? `<p class="hint">No department has code ${SETUP_FEE_DEPT_CODE} yet. Add it under Admin, Departments, and these set-up fees will show under it.</p>` : ""}
       <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>`;
     g.rows.forEach((t) => { html += `<tr><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${esc(t.employee?.full_name || "")}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${-t.qty_change}</td><td class="num">${money(t.unit_cost)}</td><td class="num">${money(-t.qty_change * Number(t.unit_cost || 0))}</td></tr>`; });
+    g.fees.forEach((f) => { html += `<tr><td>${new Date(f.date + "T00:00:00").toLocaleDateString()}</td><td></td><td>Set-up fees: ${esc(f.vendor)}${f.invoice_no ? " invoice " + esc(f.invoice_no) : ""}</td><td class="num"></td><td class="num"></td><td class="num">${money(f.setup_fees)}</td></tr>`; });
     html += `</tbody></table></div></div>`;
   });
   out.innerHTML = html;
@@ -1297,6 +1557,8 @@ $("csvBtn").addEventListener("click", () => {
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [["Date", "Department", "Dept code", "Employee", "Item", "Size", "SKU", "Category", "Qty", "Unit cost", "Total", "Checked out by", "Notes"].map(cell).join(",")];
   S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.name, t.department?.code, t.employee?.full_name, t.item?.name, t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), byName(t.performed_by), t.notes].map(cell).join(",")));
+  const d = S.report.feeDept;
+  S.report.fees.forEach((f) => lines.push([new Date(f.date + "T00:00:00").toLocaleDateString(), d?.name || `Department ${SETUP_FEE_DEPT_CODE}`, d?.code || SETUP_FEE_DEPT_CODE, "", "Vendor set-up fees", "", "", "Set-up", "", "", Number(f.setup_fees).toFixed(2), "", `${f.vendor}${f.invoice_no ? " invoice " + f.invoice_no : ""}`].map(cell).join(",")));
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${S.report.test ? "TEST-" : ""}apparel-chargebacks-${S.report.from}-to-${S.report.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
 });
@@ -1367,10 +1629,12 @@ $("testClearBtn").addEventListener("click", async () => {
     n = count || 0;
   }
   if (!n && !invs.length && !matches) return toast("There's no test activity to clear.");
-  if (!confirm(`Delete ${n} test transaction${n === 1 ? "" : "s"}, ${invs.length} test invoice${invs.length === 1 ? "" : "s"} (with ${invs.length === 1 ? "its file" : "their files"}) and ${matches} test vendor match${matches === 1 ? "" : "es"}, and set the test items' cost back to $0.00? Real items, invoices and reports aren't touched.`)) return;
+  if (!confirm(`Delete ${n} test transaction${n === 1 ? "" : "s"}, ${invs.length} test document${invs.length === 1 ? "" : "s"} (with ${invs.length === 1 ? "its file" : "their files"}), the test cost history and ${matches} test vendor match${matches === 1 ? "" : "es"}, and set the test items' cost back to $0.00? Real items, documents and reports aren't touched.`)) return;
   if (ids.length) {
     let r = await sb.from("transactions").delete().in("item_id", ids);
     if (r.error) return fail(r.error, "Couldn't delete the test transactions");
+    r = await sb.from("cost_updates").delete().in("item_id", ids);
+    if (r.error) return fail(r.error, "Couldn't delete the test cost history");
     r = await sb.from("vendor_aliases").delete().in("item_id", ids);
     if (r.error) return fail(r.error, "Couldn't delete the test vendor matches");
     r = await sb.from("items").update({ unit_cost: 0 }).in("id", ids);
@@ -1378,7 +1642,7 @@ $("testClearBtn").addEventListener("click", async () => {
   }
   if (invs.length) {
     const { error } = await sb.from("invoices").delete().in("id", invs.map((v) => v.id));
-    if (error) return fail(error, "Couldn't delete the test invoices");
+    if (error) return fail(error, "Couldn't delete the test documents");
     const rm = await sb.storage.from(INVOICE_BUCKET).remove(invs.map((v) => v.file_path));
     if (rm.error) console.warn("Test invoice rows deleted but their files were not removed", rm.error);
   }

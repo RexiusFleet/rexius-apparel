@@ -21,13 +21,15 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
+- `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` — packing slips and invoices: document type, order number and set-up fees on `apparel.invoices`, the `apparel.cost_updates` history, display columns on vendor matches, and the two database functions that receive a packing slip or apply an invoice's costs all at once. See "Packing slips and invoices" below. Run once, the same way, before deploying the `invoice-extract` function that goes with it; safe to re-run.
 - `supabase/migrations/20261103150000_fleet_services_tees.sql` — adds the Fleet Services short- and long-sleeve tees in S–4XL (14 items, `FS-SS-*` and `FS-LS-*`, category Shirt, reorder point 12). Run once, the same way; safe to re-run.
-- `testing/` — `test-invoice.pdf`, a sample invoice from a made-up vendor for trying invoice reading in test mode, and `make_test_invoice.py`, which rebuilds it (`python3 testing/make_test_invoice.py`). Deploy this folder alongside `index.html`; the app links to the PDF.
-- `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic invoice reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
+- `testing/` — `test-packing-slip.pdf` and `test-invoice.pdf`, a made-up vendor's packing list and invoice for trying packing slip and invoice reading in test mode, and `make_test_documents.py`, which rebuilds both (`python3 testing/make_test_documents.py`). Deploy this folder alongside `index.html`; the app links to the PDFs.
+- `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic document reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
 - `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column; people are identified by name and home department only. Run once, the same way, on a project that was set up before it existed.
 - `supabase/migrations/20261027120000_apparel_rls.sql` — (historical, `public` schema) the row-level security: locks every apparel table to members of `app_users` (the Supabase project is shared with another app) and adds the helper functions the user-management function needs. Supersedes the RLS section of `apparel_schema_public.sql`; safe to re-run.
 - `supabase/functions/admin-users/index.ts` — Edge Function that lets admins create logins, change roles, reset passwords and deactivate/reactivate apparel users without the service-role key ever reaching the browser.
+- `supabase/functions/invoice-extract/` — Edge Function that reads a packing slip or invoice with Claude (`index.ts`). The fee spreading and the matching keys live in `spread.ts`, tested with `node supabase/functions/invoice-extract/spread.test.ts`; `index.html` has copies of the matching keys that must stay identical.
 - `supabase/functions/low-stock-alert/` — Edge Function that sends the queued low-stock emails from the app's Gmail account (`index.ts`). The grouping and wording live in `message.ts`, tested with `node supabase/functions/low-stock-alert/message.test.ts`.
 - `supabase/config.toml` — Supabase CLI config (turns off gateway JWT checks for `admin-users`, which verifies the token itself).
 
@@ -117,34 +119,52 @@ In the app, Admin tab:
 4. **Print labels** — print a QR label for each item (Avery 5160, 30 per sheet, print at 100% with no scaling).
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
 
-## Vendor invoices
+## Packing slips and invoices
 
-Admins can keep the clothing vendor's invoices in the app. On the **Receive** tab, pick *Attach a new invoice…* to upload the scan or PDF with the first line of an order; the invoice stays selected so the rest of the order's lines can be received against it, and later lines can pick any recent invoice from the same list. **Admin → Invoices** lists every invoice (searchable by vendor, number or notes) with how many receive lines it covers, and lets you open the file, fix the details, or add an invoice that isn't tied to a receipt. Files live in a private Storage bucket and open through short-lived links, so only admins can see them. Phone users can take a photo of the paper invoice straight from the file picker.
+What arrived and what it cost come from two different papers, so the app treats them separately.
 
-### Receive from an invoice (automatic reading)
+- **Packing slip.** It comes in the box and lists what actually shipped. Reading one adds those quantities to inventory and leaves costs alone. If the slip is marked up by hand, for example 15 printed and 14 written beside it, the handwritten count is the one received, and the review shows *Ordered 15*.
+- **Invoice.** It can arrive before or after the goods and can cover several shipments. Reading one adds no stock. It sets each item's current cost to the garment price plus its share of the logo charges, which future checkouts are charged at. Every change is kept in `apparel.cost_updates`.
+- **Set-up fees** (screen set-up, reorder or reset fees) are never part of item cost, so the price per piece stays steady from order to order. They are recorded on the invoice and charged to **department 10** in the chargeback report.
 
-At the top of the **Receive** tab, *Receive from an invoice* uploads the scan or PDF and sends it to the `invoice-extract` Edge Function, which has Claude read the header (vendor, number, date, total) and every product line (description, vendor SKU, units, per-unit cost) and match each line to one of your items. The page shows a review table: fix a quantity or cost, pick a different item, skip a line, then confirm. Confirming creates one receive transaction per line (which sets the item's unit cost, as manual receiving does), fills in the invoice record, and saves each line's match.
+### Reading one
 
-**Decoration and set-up fees.** Many vendors bill embroidery or screen printing and set-up fees as separate lines. The function returns those as `add_on_charges` instead of stock lines, and `supabase/functions/invoice-extract/spread.ts` spreads their total equally over every piece on the invoice and adds it to each line's unit cost. The review screen shows the breakdown and has a tick box to turn it off. Freight and tax are never spread. Costs are stored to the cent, so a line total can differ from the invoice by a few cents. Test the arithmetic with `node supabase/functions/invoice-extract/spread.test.ts`.
+At the top of the **Receive** tab, *Read a packing slip or invoice*: choose which it is, pick the scan, photo or PDF, and press Read. The file is saved first, then the `invoice-extract` Edge Function has Claude read it and match each garment and size to one of your items. Nothing is recorded until you confirm the review.
 
-**Vendor line matches.** The first time a vendor line is matched to an item, the choice is saved in `apparel.vendor_aliases` keyed by the vendor's SKU (or the description when there is no SKU) plus colour and size, because one part number often covers every size. The next invoice from that vendor matches those lines automatically and shows them as *Known match*; the model only has to guess at lines it hasn't seen. **Admin → Invoices → Vendor line matches** lists and deletes them.
+- **Packing slip review.** Vendor, order number and date at the top. One row per garment and size, with the received quantity, the matched item and how many are on hand now. Confirm with *Receive N pieces*. The app warns before receiving the same vendor order number twice. Confirming runs `apparel.receive_packing_slip`, which adds every line in one go or none of them.
+- **Invoice review.** Vendor, invoice number, date and total at the top. A tick box adds the logo charges to item cost, spread equally over every piece, or over each order's own pieces when the invoice is split into sections. The set-up fees box shows what goes to department 10 and can be corrected. Freight and tax are listed but never added to cost. Each row shows the garment price, the logo share, the new cost and the item's cost now. A totals line checks garments, logos, set-up and other charges against the invoice total. An item billed on more than one line gets the quantity-weighted average. Confirm with *Update N item costs*, which runs `apparel.apply_invoice_costs`, again all or nothing.
+- **Wrong type.** If you read an invoice as a packing slip, or the other way round, the review says so and offers to switch before anything is saved.
 
-Setup, once:
+For invoice 66123 from Eugene Silkscreen, garments $9.35 and $22.95 plus $8.25 of logos become costs of $17.60 and $31.20, and the $45.00 set-up fee goes to department 10.
 
-1. Run `supabase/migrations/20261027200000_vendor_aliases.sql` in the SQL Editor.
-2. Create an API key at <https://platform.claude.com/> and store it as a function secret (never in the page):
+**Vendor line matches.** When you confirm with *Remember* ticked, the match is saved in `apparel.vendor_aliases`. The key is the vendor's part number without any size suffix (`2400_4X` is `2400`), plus colour, size and design, because one part number covers every size and colour and the same blank shirt can carry different designs. Vendor names ignore punctuation and endings like Inc., and sizes are spelled one way (`LG` is `L`, `4X` is `4XL`), so a match learned from a packing slip works on the invoice too. The next document from that vendor shows those lines as *Known match*. **Admin → Documents → Vendor line matches** lists and deletes them. The rules live in `supabase/functions/invoice-extract/spread.ts` with copies in `index.html` that must stay identical.
+
+### Documents
+
+**Admin → Documents** lists every packing slip, invoice and other vendor paperwork, filterable by type and searchable by vendor, number or notes. Each row says what the document did: *Received, 3 lines*, *Costs set on 2 items, set-up $45.00*, or *Not received yet*. **Open** shows the file through a short-lived link, plus any costs the invoice set. **Read** appears on a packing slip or invoice that hasn't been used yet and takes it to the Receive tab. **Edit** fixes the details, including type and set-up fees, without undoing what it already did. **Add a document** files paperwork without reading it; an invoice filed this way can carry set-up fees for the report. Files live in a private Storage bucket, so only admins can see them. The manual *Receive one item* form can attach a document too.
+
+### Set-up fees in the chargeback report
+
+**Reports** adds each invoice's set-up fees to department 10, dated by the invoice date, with a *vendor set-up fees* total at the top. Run it for *Last month* for the monthly figure; the CSV has one row per invoice. Department 10 is whichever department has code `10`. Until one exists, the fees show under *Department 10* with a reminder to add it under Admin, Departments. In test mode they go to the test department.
+
+### Setup
+
+1. Run `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` in the SQL Editor. Earlier setups also needed `20261027200000_vendor_aliases.sql`.
+2. The Claude key is a function secret, set once and never in the page:
 
    ```bash
    supabase secrets set ANTHROPIC_API_KEY_APPAREL=sk-ant-...
    ```
 
-3. Deploy the function (and re-deploy whenever its `index.ts` changes):
+3. Deploy the function, and redeploy whenever anything in `supabase/functions/invoice-extract/` changes:
 
    ```bash
-   supabase functions deploy invoice-extract
+   supabase functions deploy invoice-extract --no-verify-jwt
    ```
 
-The function uses Claude Opus 5.5 and typically costs a few cents per invoice. Only active admins can call it; it only reads files from the private `apparel-invoices` bucket and writes nothing itself. Files over 20 MB and HEIC photos are rejected with a clear message (iPhone users: set the camera to *Most compatible*, or upload a PDF).
+4. Push `index.html` and `testing/` to `main`.
+
+The function uses Claude Opus 5.5 and typically costs a few cents per document. Only active admins can call it. It only reads files from the private `apparel-invoices` bucket and writes nothing itself. Files over 20 MB and HEIC photos are rejected with a clear message: iPhone users can set the camera to *Most compatible* or upload a PDF.
 
 ## Test product and test mode
 
@@ -152,16 +172,16 @@ For trying the app out, or checking a new feature, without touching real numbers
 
 **Admin → Test mode → Turn on test mode** switches every screen over to test data, and only test data, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
 
-- **Receive** lists only test items. Invoices uploaded are saved as test invoices, and *Receive from an invoice* matches lines to test items only. Try it with the sample test invoice (`testing/test-invoice.pdf`, linked from Admin → Test mode and the Receive tab). It should come back as three lines (S 4, M 6, L 2) at $12.50 each: $10.00 plus $2.50 of screen print and set-up spread over the 12 pieces, with $9.50 freight listed as not received. Reading it costs a few cents, like any invoice.
+- **Receive** lists only test items. Documents uploaded are saved as test documents, and reading one matches lines to test items only. Try the two samples, linked from Admin → Test mode and the Receive tab. Read `testing/test-packing-slip.pdf` as a packing slip: S 4, M 6 and L 1 come back, with L showing *Ordered 2*, so 11 pieces are received. Read `testing/test-invoice.pdf` as an invoice: each size gets a new cost of $11.50, which is $10.00 plus $1.50 of screen print. The $12.00 set-up fee goes to the test department in the report, $9.50 freight stays out of cost, and the totals match $159.50. Each read costs a few cents.
 - **Print labels** lists only test items, so you can print a test QR label and scan it on **Check out**.
-- **Inventory**, **Recent activity**, **Reports** and **Admin → Invoices** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
+- **Inventory**, **Recent activity**, **Reports** and **Admin → Documents** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
 - **Check out** offers only test employees and test departments, so a test checkout touches nothing real: Test Product to Test Employee, charged to Test Department.
 
 Outside test mode, real reports, inventory totals and low-stock counts never include test data. The pick lists, employee search and department dropdowns (including the Reports department filter) never offer test records, and checkout users never see them (scanning a test label tells them it is a test label).
 
-**Anything you add while test mode is on is a test record**: items (including one item per size), employees (including a new employee added from the check out screen), departments and invoices. Anything added outside test mode is real. The flag is only set when a record is created, so a real item, employee or department with history can never be hidden from reports later.
+**Anything you add while test mode is on is a test record**: items (including one item per size), employees (including a new employee added from the check out screen), departments and documents. Anything added outside test mode is real. The flag is only set when a record is created, so a real item, employee or department with history can never be hidden from reports later.
 
-**Clear test activity** (Admin → Test mode) deletes every test transaction, test invoice (with its file) and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
+**Clear test activity** (Admin → Test mode) deletes every test transaction, test document (with its file), test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
 
 Setup, once, in this order:
 
@@ -222,9 +242,9 @@ If an email doesn't arrive:
 ## Day to day
 
 - **Check out** — scan labels (or pick from the list), choose the employee, confirm the department, confirm. The employee's home department is preselected but can be changed.
-- **Receive** — add incoming orders. Entering a unit cost updates the item's current cost, which future checkouts are charged at.
+- **Receive** — read a packing slip to add what arrived, and read the invoice when it comes to set costs. *Receive one item* is there for anything else; entering a unit cost there also updates the item's current cost, which future checkouts are charged at.
 - **Inventory** — on-hand counts with low-stock items flagged first. Admins can adjust counts after a physical check and undo mistaken transactions.
-- **Reports** — chargebacks by department for any date range, with CSV download.
+- **Reports** — chargebacks by department for any date range, including vendor set-up fees under department 10, with CSV download.
 - **Display** — the half-circle button in the top bar picks Auto (follows the phone or computer's own light/dark setting), Light or Dark. Each device remembers its own choice. Printed labels are always black on white. Colours live as variables at the top of the `<style>` block, light first and then the dark overrides; a new screen should use those variables rather than fixed colours so it works in both.
 
 ## Later: annual apparel program
