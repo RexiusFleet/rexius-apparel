@@ -487,7 +487,7 @@ tr.low td { background: var(--orange-soft); }
       <div class="subview" id="sub-labels">
         <div class="panel quiet">
           <p>Choose how many labels to print for each item. Labels fit Avery 5160 sheets (30 per page, 1" × 2⅝"). Set your printer to 100% scale with no margins.</p>
-          <div class="btn-row" style="margin-bottom:12px"><button class="btn small" id="labelsClearBtn">Clear all</button><button class="btn small" id="labelsFiveBtn">Set all to 5</button></div>
+          <div class="btn-row" style="margin-bottom:12px"><button class="btn small" id="labelsClearBtn">Clear all</button><button class="btn small" id="labelsOneBtn">Set all to 1</button></div>
           <div class="label-picker" id="labelPicker"></div>
           <div class="btn-row" style="margin-top:16px"><button class="btn primary" id="printLabelsBtn">Print labels</button></div>
         </div>
@@ -1714,7 +1714,7 @@ function renderLabelPicker() {
   el.innerHTML = S.items.filter((i) => i.active && inScope(i.id)).map((i) => `<div class="lp-name">${esc(itemLabel(i))} <span class="sub">${esc(i.sku)}</span></div><input type="number" min="0" inputmode="numeric" data-id="${i.id}" value="${prev[i.id] || 0}">`).join("") || `<div class="empty">${S.testMode ? "No test items yet." : "Add items first."}</div>`;
 }
 $("labelsClearBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 0)));
-$("labelsFiveBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 5)));
+$("labelsOneBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 1)));
 $("printLabelsBtn").addEventListener("click", () => {
   const want = []; $("labelPicker").querySelectorAll("input").forEach((inp) => { const n = parseInt(inp.value) || 0; const it = S.items.find((i) => i.id === inp.dataset.id); for (let k = 0; k < n; k++) want.push(it); });
   if (!want.length) return toast("Set a quantity for at least one item.", true);

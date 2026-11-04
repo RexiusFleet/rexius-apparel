@@ -116,7 +116,7 @@ In the app, Admin tab:
 1. **Departments** — add each department that gets charged back.
 2. **Items** — use "Add one item per size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, sizes `S, M, L, XL, 2XL, 3XL`). Set the unit cost and reorder threshold.
 3. **Employees** — add names and home departments.
-4. **Print labels** — print a QR label for each item (Avery 5160, 30 per sheet, print at 100% with no scaling).
+4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling).
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
 
 ## Packing slips and invoices
