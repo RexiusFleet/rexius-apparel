@@ -21,6 +21,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
+- `supabase/migrations/20261110120000_invoice_coding_reports.sql` — invoice coding reports: the `apparel.coding_reports` table, a `report_id` on check outs, and the `apparel.coding_report()` function that previews or saves one. See "Invoice coding reports" below. Run once, the same way, before pushing the page that goes with it; safe to re-run.
 - `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` — packing slips and invoices: document type, order number and set-up fees on `apparel.invoices`, the `apparel.cost_updates` history, display columns on vendor matches, and the two database functions that receive a packing slip or apply an invoice's costs all at once. See "Packing slips and invoices" below. Run once, the same way, before deploying the `invoice-extract` function that goes with it; safe to re-run.
 - `supabase/migrations/20261103150000_fleet_services_tees.sql` — adds the Fleet Services short- and long-sleeve tees in S–4XL (14 items, `FS-SS-*` and `FS-LS-*`, category Shirt, reorder point 12). Run once, the same way; safe to re-run.
 - `testing/` — `test-packing-slip.pdf` and `test-invoice.pdf`, a made-up vendor's packing list and invoice for trying packing slip and invoice reading in test mode, and `make_test_documents.py`, which rebuilds both (`python3 testing/make_test_documents.py`). Deploy this folder alongside `index.html`; the app links to the PDFs.
@@ -147,9 +148,21 @@ For invoice 66123 from Eugene Silkscreen, garments $9.35 and $22.95 plus $8.25 o
 
 **Reports** adds each invoice's set-up fees to department 10, dated by the invoice date, with a *vendor set-up fees* total at the top. Run it for *Last month* for the monthly figure; the CSV has one row per invoice. Department 10 is whichever department has code `10`. Until one exists, the fees show under *Department 10* with a reminder to add it under Admin, Departments. In test mode they go to the test department.
 
+### Invoice coding reports
+
+Stock is bought ahead and invoiced as it arrives, and departments are charged later, as items are checked out. So each invoice is coded with the department charges made since the last one, and the report goes to accounting with the invoice.
+
+- **What goes on it.** The invoice's set-up fees go to department 10. Then every check out not yet on a report, oldest first, whole check outs only, at the cost charged when it was checked out. If those don't fill the invoice, the rest is **Stock Up**. If there are more than fit, the newer ones carry over to the next invoice, and the small balance left by the last one that fits goes to department 10. The lines always add up to the invoice total.
+- **When.** Right after *Update N item costs* on an invoice, the report opens as a preview. *Save report* puts those check outs on that invoice, so each check out is on exactly one report. **Admin → Documents → Report** on any invoice row opens it again, or makes one for an invoice that was only filed. The invoice needs a total.
+- **What accounting gets.** A summary by department code, with Stock Up as its own line, then the detail under each code: date, employee, item, quantity, cost. The vendor and invoice number are at the top. *Print or save as PDF* uses the browser's print dialog, and *Download CSV* has one row per check out plus the set-up, balance and Stock Up rows.
+- **Fixing one.** *Delete report* frees its check outs for the next invoice's report; make it again afterwards if needed. A check out on a saved report can't be undone from Recent activity until the report is deleted. Deleting the invoice deletes its report too.
+- **The first report** takes every check out recorded so far.
+
+The arithmetic is in `apparel.coding_report(invoice, save)`, which returns the same JSON for a preview and a saved report.
+
 ### Setup
 
-1. Run `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` in the SQL Editor. Earlier setups also needed `20261027200000_vendor_aliases.sql`.
+1. Run `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` and then `supabase/migrations/20261110120000_invoice_coding_reports.sql` in the SQL Editor. Earlier setups also needed `20261027200000_vendor_aliases.sql`.
 2. The Claude key is a function secret, set once and never in the page:
 
    ```bash

@@ -27,6 +27,7 @@ This repository is public. Never commit secrets, passwords or personal email add
   - A packing slip adds stock and never changes cost (`apparel.receive_packing_slip`).
   - An invoice adds no stock. It sets item cost to garment price plus logo charges (`apparel.apply_invoice_costs`), logged in `cost_updates`.
   - Set-up fees are never in item cost. They sit in `invoices.setup_fees` and are charged to the department with code `10` in the report.
+- **`coding_reports`:** one per invoice, for accounting. Check outs not yet on a report fill the invoice total, oldest first. The rest is Stock Up, or carries to the next invoice. `transactions.report_id` marks which report a check out is on. All of it runs in `apparel.coding_report()`.
 - **Other tables:** `departments`, `employees`, `cost_updates`, `vendor_aliases` and `low_stock_alerts` (the email queue and history).
 - **`app_users`:** each user's role is `checkout` or `admin`.
   - Row-level security lets only active app users in.

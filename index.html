@@ -296,11 +296,23 @@ tr.low td { background: var(--orange-soft); }
 .label-picker .lp-name { font-weight: 500; }
 .label-picker input { min-height: 40px; width: 80px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); text-align: center; }
 #labelSheet { display: none; }
+#reportSheet { display: none; }
+.modal.wide { max-width: 860px; }
+.coding-report h3 { margin: 18px 0 4px; display: flex; justify-content: space-between; align-items: baseline; }
+.coding-report .rep-total { font-variant-numeric: tabular-nums; }
+.coding-report .rep-head { margin: 0 0 12px; }
+.coding-report .rep-note { margin: 10px 0; color: var(--mute); font-size: 14px; }
+.coding-report .rep-sum td { border-top: 1.5px solid var(--line-strong); border-bottom: 0; }
 
 @media print {
   body { background: #fff; }
   .shell, #toast, .modal-bg { display: none !important; }
   #labelSheet { display: block; color: #000; }   /* labels print black on white whatever the screen theme */
+  body.print-report #labelSheet { display: none; }
+  body.print-report #reportSheet { display: block; color: #000; font-family: var(--font); font-size: 10.5pt; }
+  #reportSheet h2 { font-size: 16pt; margin: 0 0 6pt; } #reportSheet h3 { font-size: 12pt; margin: 14pt 0 3pt; break-after: avoid; }
+  #reportSheet table { font-size: 10pt; } #reportSheet th, #reportSheet td { padding: 3pt 5pt; color: #000; border-color: #999; }
+  #reportSheet tr { break-inside: avoid; } #reportSheet .rep-note { color: #333; }
   @page { size: letter; margin: 0; }
   .sheet { width: 8.5in; height: 11in; padding: 0.5in 0 0 0.1875in; display: grid; grid-template-columns: repeat(3, 2.625in); column-gap: 0.125in; grid-auto-rows: 1in; page-break-after: always; }
   .label { display: flex; align-items: center; gap: 0.08in; padding: 0.06in 0.1in; overflow: hidden; }
@@ -587,6 +599,7 @@ tr.low td { background: var(--orange-soft); }
 </div>
 
 <div id="labelSheet"></div>
+<div id="reportSheet"></div>
 
 <!-- modal -->
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -606,7 +619,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema
    ========================================================= */
 const S = {
   session: null, me: null, role: null,
-  items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null,
+  items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null,
   cart: [], cartEmployee: null, rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },
   report: null, testMode: false, testIds: new Set()
 };
@@ -629,7 +642,7 @@ function toast(msg, isErr = false) {
 function fail(err, ctx) { console.error(ctx, err); toast((ctx ? ctx + ": " : "") + (err?.message || err), true); }
 
 function openModal(html) { $("modal").innerHTML = html; $("modalBg").classList.add("open"); }
-function closeModal() { $("modalBg").classList.remove("open"); $("modal").innerHTML = ""; }
+function closeModal() { $("modalBg").classList.remove("open"); $("modal").classList.remove("wide"); $("modal").innerHTML = ""; }
 $("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
 
 /* =========================================================
@@ -1250,7 +1263,10 @@ async function confirmInvoiceCosts() {
   if (error) { btn.disabled = false; return fail(error, "Couldn't update the costs"); }
   await saveMatches(lines, vendor);
   toast(`Updated ${plural(data ?? combined.length, "item cost")}${setup ? `. Set-up fees of ${money(setup)} go to department ${SETUP_FEE_DEPT_CODE}` : ""}`);
+  const docId = a.doc.id;
   clearAi(); await loadRefs(); window.scrollTo(0, 0);
+  if (totalRaw !== "") await openCodingReport(docId);   // coded with the department charges since the last invoice
+  else toast("Costs updated. Add the invoice total under Admin, Documents to make its coding report.");
 }
 async function loadAliases() {
   if (!isAdmin()) return;
@@ -1287,9 +1303,9 @@ const docLabel = (v) => `${DOC_TYPES[v.doc_type] || "Document"}: ${v.vendor}${do
 const invoiceLabel = (v) => `${docLabel(v)}${v.invoice_date ? " · " + fmtDate(v.invoice_date) : ""}`;
 async function loadInvoices() {
   if (!isAdmin()) return;
-  const { data, error } = await sb.from("invoices").select("*, lines:transactions(count), costs:cost_updates(count)").order("invoice_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
+  const { data, error } = await sb.from("invoices").select("*, lines:transactions(count), costs:cost_updates(count), report:coding_reports(id)").order("invoice_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
   if (error) return fail(error, "Couldn't load documents");
-  S.invoices = (data || []).map((v) => ({ ...v, line_count: v.lines?.[0]?.count ?? 0, cost_count: v.costs?.[0]?.count ?? 0 }));
+  S.invoices = (data || []).map((v) => ({ ...v, line_count: v.lines?.[0]?.count ?? 0, cost_count: v.costs?.[0]?.count ?? 0, has_report: Array.isArray(v.report) ? v.report.length > 0 : !!v.report }));
   renderInvoices(); renderInvoiceSelect(); renderVendorList();
 }
 function renderInvoiceSelect() {
@@ -1349,7 +1365,7 @@ $("invoicesType").addEventListener("change", renderInvoices);
 function docDone(v) {
   if (v.doc_type === "packing_slip") return v.line_count ? `Received, ${plural(v.line_count, "line")}` : v.processed_at ? "Received" : `<span class="meta">Not received yet</span>`;
   if (v.doc_type === "invoice") {
-    const parts = [v.cost_count ? `Costs set on ${plural(v.cost_count, "item")}` : "", Number(v.setup_fees) ? `set-up ${money(v.setup_fees)}` : ""].filter(Boolean);
+    const parts = [v.cost_count ? `Costs set on ${plural(v.cost_count, "item")}` : "", Number(v.setup_fees) ? `set-up ${money(v.setup_fees)}` : "", v.has_report ? "coded" : ""].filter(Boolean);
     return parts.length ? parts.join(", ") : v.processed_at ? "Applied" : `<span class="meta">Not applied yet</span>`;
   }
   return v.line_count ? `Attached to ${plural(v.line_count, "receive line")}` : "";
@@ -1363,13 +1379,14 @@ function renderInvoices() {
   tb.innerHTML = rows.length ? rows.map((v) => {
     const canRead = (v.doc_type === "packing_slip" || v.doc_type === "invoice") && !v.processed_at;
     return `<tr><td>${esc(fmtDate(v.invoice_date) || whenDone(v.created_at))}</td><td>${esc(DOC_TYPES[v.doc_type] || "")}</td><td>${esc(v.vendor)}</td><td>${esc(docNumber(v))}</td><td class="num">${v.total == null ? "" : money(v.total)}</td><td>${docDone(v)}</td><td>${esc(byName(v.uploaded_by))}</td>
-      <td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button>${canRead ? `<button class="btn small" data-iread="${v.id}">Read</button>` : ""}<button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`;
+      <td class="actions"><button class="btn small" data-iopen="${v.id}">Open</button>${canRead ? `<button class="btn small" data-iread="${v.id}">Read</button>` : ""}${v.doc_type === "invoice" ? `<button class="btn small" data-ireport="${v.id}">Report</button>` : ""}<button class="btn small" data-iedit="${v.id}">Edit</button><button class="btn small danger" data-idelete="${v.id}">Delete</button></td></tr>`;
   }).join("")
     : `<tr><td colspan="8" class="empty">${scoped.length ? "No matches." : S.testMode ? "No test documents yet." : "No documents yet."}</td></tr>`;
 }
 $("invoicesTable").addEventListener("click", async (e) => {
   const op = e.target.closest("[data-iopen]"), rd = e.target.closest("[data-iread]"), ed = e.target.closest("[data-iedit]"), dl = e.target.closest("[data-idelete]");
   if (op) return openInvoice(op.dataset.iopen);
+  const rp = e.target.closest("[data-ireport]"); if (rp) return openCodingReport(rp.dataset.ireport);
   if (rd) {
     const v = S.invoices.find((x) => x.id === rd.dataset.iread);
     const radio = document.querySelector(`input[name="aiType"][value="${v.doc_type}"]`); if (radio) { radio.checked = true; radio.dispatchEvent(new Event("change")); }
@@ -1378,7 +1395,7 @@ $("invoicesTable").addEventListener("click", async (e) => {
   }
   if (dl) {
     const v = S.invoices.find((x) => x.id === dl.dataset.idelete);
-    const warn = [v.line_count ? ` Its ${plural(v.line_count, "receive line")} stay in inventory, just without the link.` : "", v.cost_count ? ` The costs it set stay as they are.` : "", Number(v.setup_fees) ? ` Its ${money(v.setup_fees)} of set-up fees leave the report.` : ""].join("");
+    const warn = [v.line_count ? ` Its ${plural(v.line_count, "receive line")} stay in inventory, just without the link.` : "", v.cost_count ? ` The costs it set stay as they are.` : "", Number(v.setup_fees) ? ` Its ${money(v.setup_fees)} of set-up fees leave the report.` : "", v.has_report ? ` Its coding report is deleted too, and those check outs go on the next invoice's report.` : ""].join("");
     if (!confirm(`Delete ${docLabel(v)} and its file?${warn}`)) return;
     const { error } = await sb.from("invoices").delete().eq("id", v.id);
     if (error) return fail(error, "Couldn't delete the document");
@@ -1414,6 +1431,94 @@ $("invoicesTable").addEventListener("click", async (e) => {
     });
   }
 });
+
+/* =========================================================
+   INVOICE CODING REPORTS (admin only)
+   Each invoice is coded with the department charges made since the last
+   one: set-up fees to department SETUP_FEE_DEPT_CODE, then check outs not
+   yet on a report (oldest first, whole check outs), then Stock Up for what
+   is left, or a balance to that department when check outs carry over.
+   apparel.coding_report() does the arithmetic and the saving.
+   ========================================================= */
+async function openCodingReport(invoiceId, save = false) {
+  const { data, error } = await sb.rpc("coding_report", { p_invoice_id: invoiceId, p_save: save });
+  if (error) return fail(error, save ? "Couldn't save the coding report" : "Couldn't build the coding report");
+  S.coding = data;
+  if (save) { toast("Coding report saved"); loadInvoices(); }
+  renderCodingReport();
+}
+// One row per department code, then Stock Up. The amounts add up to the invoice total.
+function codingSummary(d) {
+  const r = d.report, by = new Map();
+  const add = (code, part, amount) => { if (!by.has(code)) by.set(code, { code, amount: 0, parts: {} }); const g = by.get(code); g.amount += amount; g.parts[part] = (g.parts[part] || 0) + amount; };
+  const codeOf = (l) => l.dept_code || (l.dept_name ? `${l.dept_name} (no code)` : "No department");
+  d.lines.forEach((l) => add(codeOf(l), "Check outs", Number(l.amount)));
+  if (Number(r.setup_fees)) add(SETUP_FEE_DEPT_CODE, "Set-up fees", Number(r.setup_fees));
+  if (Number(r.gap)) add(SETUP_FEE_DEPT_CODE, "Balance to invoice total", Number(r.gap));
+  const rows = [...by.values()].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  if (Number(r.stock_up)) rows.push({ code: "Stock Up", amount: Number(r.stock_up), parts: {} });
+  return { rows, codeOf };
+}
+function codingReportHtml(d) {
+  const r = d.report, v = d.invoice, { rows, codeOf } = codingSummary(d);
+  const day = (iso) => new Date(iso).toLocaleDateString();
+  const summary = rows.map((g) => { const parts = Object.entries(g.parts); return `<tr><td><strong>${esc(g.code)}</strong></td><td>${parts.length > 1 || (parts[0] && parts[0][0] !== "Check outs") ? esc(parts.map(([k, a]) => `${k} ${money(a)}`).join(" + ")) : ""}</td><td class="num">${money(g.amount)}</td></tr>`; }).join("");
+  const groups = rows.filter((g) => g.code !== "Stock Up").map((g) => {
+    const ls = d.lines.filter((l) => codeOf(l) === g.code);
+    const extra = [Number(r.setup_fees) && g.code === SETUP_FEE_DEPT_CODE ? `<tr><td></td><td></td><td>Vendor set-up fees on this invoice</td><td class="num"></td><td class="num"></td><td class="num">${money(r.setup_fees)}</td></tr>` : "",
+      Number(r.gap) && g.code === SETUP_FEE_DEPT_CODE ? `<tr><td></td><td></td><td>Balance to invoice total</td><td class="num"></td><td class="num"></td><td class="num">${money(r.gap)}</td></tr>` : ""].join("");
+    return `<h3>Dept ${esc(g.code)} <span class="rep-total">${money(g.amount)}</span></h3>
+      <table><thead><tr><th>Date</th><th>Employee</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>
+      ${ls.map((l) => `<tr><td>${day(l.date)}</td><td>${esc(l.employee || "")}</td><td>${esc(itemLabel({ name: l.item, size: l.size }))}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.amount)}</td></tr>`).join("")}${extra}</tbody></table>`;
+  }).join("");
+  return `<div class="coding-report">
+    <h2>Invoice coding report${r.is_test ? " (TEST)" : ""}</h2>
+    <p class="rep-head"><strong>${esc(v.vendor)}</strong> · Invoice ${esc(v.invoice_no || "(no number)")}${v.invoice_date ? " · " + esc(fmtDate(v.invoice_date)) : ""} · Total <strong>${money(r.invoice_total)}</strong>${d.saved ? `<br>Report saved ${esc(whenDone(r.created_at))}` : ""}</p>
+    <table><thead><tr><th>Dept code</th><th></th><th class="num">Amount</th></tr></thead><tbody>${summary}
+      <tr class="rep-sum"><td><strong>Invoice total</strong></td><td></td><td class="num"><strong>${money(rows.reduce((t, g) => t + g.amount, 0))}</strong></td></tr></tbody></table>
+    ${r.carried_count ? `<p class="rep-note">${plural(r.carried_count, "newer check out")} totalling ${money(r.carried_total)} didn't fit on this invoice and ${r.carried_count === 1 ? "carries" : "carry"} over to the next one.</p>` : ""}
+    ${groups || `<p class="rep-note">No check outs were waiting, so nothing is charged to departments on this invoice.</p>`}
+  </div>`;
+}
+function renderCodingReport() {
+  const d = S.coding; if (!d) return;
+  $("modal").classList.add("wide");
+  openModal(`${d.saved ? "" : `<div class="callout">Preview. Nothing is saved yet. Saving puts these check outs on this invoice, so they won't be charged again on the next one.</div>`}
+    ${codingReportHtml(d)}
+    <div class="btn-row">${d.saved
+      ? `<button class="btn primary" id="crPrint">Print or save as PDF</button><button class="btn" id="crCsv">Download CSV</button><button class="btn danger" id="crDelete">Delete report</button>`
+      : `<button class="btn primary" id="crSave">Save report</button>`}<button class="btn" onclick="closeModal()">Close</button></div>`);
+  if ($("crSave")) $("crSave").addEventListener("click", async () => { $("crSave").disabled = true; await openCodingReport(d.invoice.id, true); });
+  if ($("crPrint")) $("crPrint").addEventListener("click", () => printCodingReport(d));
+  if ($("crCsv")) $("crCsv").addEventListener("click", () => downloadCodingCsv(d));
+  if ($("crDelete")) $("crDelete").addEventListener("click", async () => {
+    if (!confirm(`Delete this coding report? Its ${plural(d.lines.length, "check out")} will go on the next invoice's report instead.`)) return;
+    const { error } = await sb.from("coding_reports").delete().eq("id", d.report.id);
+    if (error) return fail(error, "Couldn't delete the report");
+    S.coding = null; closeModal(); toast("Coding report deleted"); loadInvoices();
+  });
+}
+// Printing uses the browser's own dialog, where "Save as PDF" is a destination.
+function printCodingReport(d) {
+  $("reportSheet").innerHTML = codingReportHtml(d);
+  const page = document.createElement("style"); page.textContent = "@page { size: letter; margin: 0.6in; }";
+  document.head.appendChild(page); document.body.classList.add("print-report");
+  const done = () => { document.body.classList.remove("print-report"); page.remove(); $("reportSheet").innerHTML = ""; window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  setTimeout(() => window.print(), 100);
+}
+function downloadCodingCsv(d) {
+  const r = d.report, v = d.invoice, { codeOf } = codingSummary(d);
+  const cell = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
+  const head = [v.invoice_no || "", v.vendor, v.invoice_date || ""];
+  const lines = [["Invoice no.", "Vendor", "Invoice date", "Dept code", "Type", "Date", "Employee", "Item", "Size", "Qty", "Unit cost", "Amount"].map(cell).join(",")];
+  d.lines.forEach((l) => lines.push([...head, codeOf(l), "Check out", new Date(l.date).toLocaleDateString(), l.employee, l.item, l.size, l.qty, Number(l.unit_cost).toFixed(2), Number(l.amount).toFixed(2)].map(cell).join(",")));
+  const extra = (code, type, amount) => { if (Number(amount)) lines.push([...head, code, type, "", "", "", "", "", "", Number(amount).toFixed(2)].map(cell).join(",")); };
+  extra(SETUP_FEE_DEPT_CODE, "Set-up fees", r.setup_fees); extra(SETUP_FEE_DEPT_CODE, "Balance to invoice total", r.gap); extra("Stock Up", "Stock Up", r.stock_up);
+  const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `${r.is_test ? "TEST-" : ""}apparel-coding-invoice-${String(v.invoice_no || "no-number").replace(/[^\w.\-]+/g, "_")}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
 
 /* =========================================================
    INVENTORY
@@ -1459,7 +1564,7 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, report_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
@@ -1469,12 +1574,13 @@ async function loadActivity() {
     const what = { checkout: "Checked out", receive: "Received", adjust: "Adjusted" }[t.type];
     const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">${esc(docLabel(t.invoice))}</button></div>` : "";
     const who = t.type === "checkout" ? `${esc(t.employee?.full_name || "")}<div class="meta sub">${esc(t.department?.name || "")}</div>` : esc(t.notes || "") + inv;
-    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${who}</td><td>${esc(byName(t.performed_by))}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}">Undo</button>` : ""}</td></tr>`;
+    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${who}</td><td>${esc(byName(t.performed_by))}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
 }
 $("actTable").addEventListener("click", async (e) => {
   const iv = e.target.closest("[data-inv]"); if (iv) { if (!S.invoices.length) await loadInvoices(); return openInvoice(iv.dataset.inv); }
   const b = e.target.closest("[data-del]"); if (!b) return;
+  if (b.dataset.coded) return toast("This check out is on a saved invoice coding report. Delete that report first (Admin, Documents, Report).", true);
   if (!confirm("Remove this transaction? Inventory will be recalculated.")) return;
   const { error } = await sb.from("transactions").delete().eq("id", b.dataset.del);
   if (error) return fail(error, "Couldn't remove it");
