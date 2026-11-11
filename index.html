@@ -118,14 +118,16 @@ input, select, textarea { font: inherit; color: var(--ink); }
   background: var(--charcoal); color: #fff; border-bottom: 4px solid var(--brand); padding: 12px 16px 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
 .brand h1 { color: #fff; font-size: 22px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .wordmark { height: 30px; width: auto; display: block; flex: 0 0 auto; }
 .brand-sep { width: 1.5px; align-self: stretch; background: var(--brand); opacity: .9; margin: 2px 0; }
 .login-logo { width: 100%; max-width: 320px; height: auto; display: block; margin: 0 auto 10px; }
-@media (max-width: 420px) { .brand h1 { display: none; } .brand-sep { display: none; } .wordmark { height: 26px; } }
-.whoami { font-size: 14px; color: #E2E5E2; display: flex; align-items: center; gap: 10px; }
-.whoami button { background: none; border: 1px solid #8A8A8C; color: #fff; padding: 6px 10px; border-radius: var(--radius); font-size: 14px; }
+/* Phones show the logo alone, and a name too long for the space ends in "…" instead of wrapping. */
+@media (max-width: 560px) { .topbar .brand h1 { display: none; } .brand-sep { display: none; } .wordmark { height: 26px; } }
+.whoami { font-size: 14px; color: #E2E5E2; display: flex; align-items: center; gap: 10px; min-width: 0; }
+#whoName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.whoami button { background: none; border: 1px solid #8A8A8C; color: #fff; padding: 6px 10px; border-radius: var(--radius); font-size: 14px; flex: 0 0 auto; white-space: nowrap; }
 .whoami #themeBtn { padding: 6px 8px; }
 .whoami #themeBtn svg { display: block; }
 
