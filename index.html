@@ -186,6 +186,8 @@ main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px))
 .choice input { width: 18px; height: 18px; margin: 0; }
 .callout { border-left: 4px solid var(--orange); background: var(--orange-soft); border-radius: 6px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
 .callout .btn { margin-top: 8px; }
+.camera-only { display: none; }
+@media (pointer: coarse) { .camera-only { display: block; } }   /* phones and tablets, where the button opens the camera */
 .pill.known { background: var(--lime-soft); color: var(--ink); }
 .pill.suggested { background: var(--orange-soft); color: var(--ink); }
 .pill.unmatched { background: var(--red); color: #fff; }
@@ -409,6 +411,11 @@ tr.low td { background: var(--orange-soft); }
             <label><input type="radio" name="aiType" value="packing_slip" checked>A packing slip: add stock</label>
             <label><input type="radio" name="aiType" value="invoice">An invoice: update costs</label>
           </div></div>
+        <div class="camera-only" style="margin-bottom:14px">
+          <button class="btn primary big block" id="aiCameraBtn">Take a photo of it</button>
+          <input id="aiCamera" type="file" accept="image/*" capture="environment" style="display:none">
+          <p class="hint" style="margin:8px 0 0">Opens your camera and reads the photo as soon as you accept it. Lay the paper flat, fill the frame and avoid shadows. Or choose a file below.</p>
+        </div>
         <div class="row">
           <div class="field"><label for="aiFile">Scan, photo or PDF</label><input id="aiFile" type="file" accept="application/pdf,image/*"></div>
           <div class="field"><label for="aiVendor">Vendor (optional)</label><input id="aiVendor" list="vendorList" placeholder="Read from the paper if blank" autocomplete="off"><datalist id="vendorList"></datalist></div>
@@ -1025,16 +1032,49 @@ const aiType = () => document.querySelector('input[name="aiType"]:checked')?.val
 document.querySelectorAll('input[name="aiType"]').forEach((r) => r.addEventListener("change", () => {
   $("aiReadBtn").textContent = aiType() === "invoice" ? "Read invoice" : "Read packing slip";
 }));
-$("aiReadBtn").addEventListener("click", async () => {
-  const file = $("aiFile").files[0]; if (!file) return toast("Choose the scan, photo or PDF first.", true);
-  const btn = $("aiReadBtn"); btn.disabled = true;
+// Phone photos are far larger than the reader needs. Shrinking one first makes the upload quick on a weak
+// signal, and turns HEIC into JPEG, which the reader requires. Anything that can't be shrunk goes up as it is.
+const PHOTO_MAX_EDGE = 2200, PHOTO_KEEP_BYTES = 3 * 1048576;
+async function shrinkPhoto(file) {
+  const type = file.type || "";
+  const isImage = /^image\//.test(type) || /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+  if (!isImage || type === "image/gif") return file;
+  try {
+    let src;
+    try { src = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+    catch (_) {
+      src = await new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { URL.revokeObjectURL(url); res(img); }; img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("can't decode")); }; img.src = url; });
+    }
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(w, h));
+    const readable = type === "image/jpeg" || type === "image/png" || type === "image/webp";
+    if (scale === 1 && readable && file.size <= PHOTO_KEEP_BYTES) { src.close?.(); return file; }   // already small enough
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(src, 0, 0, c.width, c.height);
+    src.close?.();
+    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.85));
+    if (!blob || (readable && blob.size >= file.size)) return file;
+    return new File([blob], (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg", lastModified: file.lastModified || Date.now() });
+  } catch (_) { return file; }
+}
+// Saves the file as a document of the chosen type, then reads it. Used by the Read button and the camera button.
+async function startRead(file) {
+  if (S.ai && !confirm("Discard the review that's open and read this one instead? Its file stays saved under Admin, Documents.")) return;
+  const btns = [$("aiReadBtn"), $("aiCameraBtn")]; btns.forEach((b) => (b.disabled = true));
+  aiStatus("Getting it ready…");
+  file = await shrinkPhoto(file);
   aiStatus("Uploading…");
   const doc = await createInvoice({ file, vendor: $("aiVendor").value.trim() || "Unknown vendor", doc_type: aiType() });
-  if (!doc) { btn.disabled = false; aiStatus(""); return; }
-  $("aiFile").value = ""; $("aiVendor").value = "";
-  await readDocument(doc);
-  btn.disabled = false;
+  if (doc) { $("aiFile").value = ""; $("aiVendor").value = ""; await readDocument(doc); }
+  else aiStatus("");
+  btns.forEach((b) => (b.disabled = false));
+}
+$("aiReadBtn").addEventListener("click", () => {
+  const file = $("aiFile").files[0]; if (!file) return toast("Choose the scan, photo or PDF first.", true);
+  startRead(file);
 });
+$("aiCameraBtn").addEventListener("click", () => $("aiCamera").click());
+$("aiCamera").addEventListener("change", (e) => { const file = e.target.files[0]; e.target.value = ""; if (file) startRead(file); });
 async function readDocument(doc) {
   const kind = doc.doc_type === "invoice" ? "invoice" : "packing slip";
   clearAi();

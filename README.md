@@ -130,7 +130,7 @@ What arrived and what it cost come from two different papers, so the app treats 
 
 ### Reading one
 
-At the top of the **Receive** tab, *Read a packing slip or invoice*: choose which it is, pick the scan, photo or PDF, and press Read. The file is saved first, then the `invoice-extract` Edge Function has Claude read it and match each garment and size to one of your items. Nothing is recorded until you confirm the review.
+At the top of the **Receive** tab, *Read a packing slip or invoice*: choose which it is, pick the scan, photo or PDF, and press Read. On a phone or tablet, **Take a photo of it** opens the camera and starts reading as soon as the photo is accepted, with no separate upload step. Photos are shrunk to 2200 pixels on the long edge and saved as JPEG before upload, which keeps uploads quick and lets iPhone HEIC photos be read; PDFs and small images go up unchanged. The file is saved first, then the `invoice-extract` Edge Function has Claude read it and match each garment and size to one of your items. Nothing is recorded until you confirm the review.
 
 - **Packing slip review.** Vendor, order number and date at the top. One row per garment and size, with the received quantity, the matched item and how many are on hand now. Confirm with *Receive N pieces*. The app warns before receiving the same vendor order number twice. Confirming runs `apparel.receive_packing_slip`, which adds every line in one go or none of them.
 - **Invoice review.** Vendor, invoice number, date and total at the top. A tick box adds the logo charges to item cost, spread equally over every piece, or over each order's own pieces when the invoice is split into sections. The set-up fees box shows what goes to department 10 and can be corrected. Freight and tax are listed but never added to cost. Each row shows the garment price, the logo share, the new cost and the item's cost now. A totals line checks garments, logos, set-up and other charges against the invoice total. An item billed on more than one line gets the quantity-weighted average. Confirm with *Update N item costs*, which runs `apparel.apply_invoice_costs`, again all or nothing.
@@ -177,7 +177,7 @@ The arithmetic is in `apparel.coding_report(invoice, save)`, which returns the s
 
 4. Push `index.html` and `testing/` to `main`.
 
-The function uses Claude Opus 5.5 and typically costs a few cents per document. Only active admins can call it. It only reads files from the private `apparel-invoices` bucket and writes nothing itself. Files over 20 MB and HEIC photos are rejected with a clear message: iPhone users can set the camera to *Most compatible* or upload a PDF.
+The function uses Claude Opus 5.5 and typically costs a few cents per document. Only active admins can call it. It only reads files from the private `apparel-invoices` bucket and writes nothing itself. Files over 20 MB are rejected with a clear message. So is a HEIC photo, in the rare case the browser couldn't convert it: set the iPhone camera to *Most compatible* or upload a PDF.
 
 ## Test product and test mode
 
