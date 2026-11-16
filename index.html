@@ -628,7 +628,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema
    ========================================================= */
 const S = {
   session: null, me: null, role: null,
-  items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null,
+  items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
   cart: [], cartEmployee: null, rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },
   report: null, testMode: false, testIds: new Set()
 };
@@ -651,7 +651,7 @@ function toast(msg, isErr = false) {
 function fail(err, ctx) { console.error(ctx, err); toast((ctx ? ctx + ": " : "") + (err?.message || err), true); }
 
 function openModal(html) { $("modal").innerHTML = html; $("modalBg").classList.add("open"); }
-function closeModal() { $("modalBg").classList.remove("open"); $("modal").classList.remove("wide"); $("modal").innerHTML = ""; }
+function closeModal() { $("modalBg").classList.remove("open"); $("modal").classList.remove("wide"); $("modal").innerHTML = ""; if (S.cropClosed) S.cropClosed(); }
 $("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
 
 /* =========================================================
@@ -1032,6 +1032,159 @@ const aiType = () => document.querySelector('input[name="aiType"]:checked')?.val
 document.querySelectorAll('input[name="aiType"]').forEach((r) => r.addEventListener("change", () => {
   $("aiReadBtn").textContent = aiType() === "invoice" ? "Read invoice" : "Read packing slip";
 }));
+/* ---- Finding the page in a photo and squaring it up ----
+   The paper is assumed to be lighter than what it lies on. A small grey copy of the photo is split into
+   light and dark (Otsu), the largest light patch is taken as the page, and its outline is reduced to four
+   corners. Anything doubtful returns null and the whole photo is used: too little contrast, a patch that
+   isn't four-sided, or a page that already fills the frame. The person always sees the crop before it is used. */
+const CROP_DETECT_EDGE = 320, CROP_MIN_SHARE = 0.2, CROP_FULL_SHARE = 0.9, CROP_MARGIN = 0.025;
+// gray: Uint8Array of w*h brightness values. Returns four corners [{x,y}] in that grid, clockwise from top left, or null.
+function findPageQuad(gray, w, h) {
+  const n = w * h;
+  // Light blur, so print on the page and grain in the desk don't break the patch up.
+  const blur = new Uint8Array(n), tmp = new Float32Array(n), R = 2;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0, c = 0; for (let d = -R; d <= R; d++) { const xx = x + d; if (xx >= 0 && xx < w) { s += gray[y * w + xx]; c++; } } tmp[y * w + x] = s / c; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0, c = 0; for (let d = -R; d <= R; d++) { const yy = y + d; if (yy >= 0 && yy < h) { s += tmp[yy * w + x]; c++; } } blur[y * w + x] = s / c; }
+  // Otsu's threshold, and how cleanly it separates the two groups (0 to 1).
+  const hist = new Float64Array(256); for (let i = 0; i < n; i++) hist[blur[i]]++;
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  const mean = sum / n; let varT = 0; for (let i = 0; i < 256; i++) varT += hist[i] * (i - mean) * (i - mean);
+  let wB = 0, sB = 0, best = 0, thr = 127, gap = 0;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sum - sB) / wF, between = wB * wF * (mB - mF) * (mB - mF); if (between > best) { best = between; thr = t; gap = mF - mB; } }
+  if (!varT || best / n / varT < 0.6 || gap < 40) return null;   // paper and background are too alike to tell apart
+  // Largest connected light patch.
+  const label = new Int32Array(n), stack = new Int32Array(n); let bestLabel = 0, bestSize = 0, next = 0;
+  for (let i = 0; i < n; i++) {
+    if (blur[i] <= thr || label[i]) continue;
+    let top = 0, size = 0; stack[top++] = i; label[i] = ++next;
+    while (top) { const p = stack[--top]; size++; const x = p % w;
+      if (x > 0 && blur[p - 1] > thr && !label[p - 1]) { label[p - 1] = next; stack[top++] = p - 1; }
+      if (x < w - 1 && blur[p + 1] > thr && !label[p + 1]) { label[p + 1] = next; stack[top++] = p + 1; }
+      if (p >= w && blur[p - w] > thr && !label[p - w]) { label[p - w] = next; stack[top++] = p - w; }
+      if (p < n - w && blur[p + w] > thr && !label[p + w]) { label[p + w] = next; stack[top++] = p + w; } }
+    if (size > bestSize) { bestSize = size; bestLabel = next; }
+  }
+  if (bestSize < CROP_MIN_SHARE * n) return null;
+  // Its outline: the first and last pixel of the patch on every row, then the convex hull of those.
+  const pts = [];
+  for (let y = 0; y < h; y++) { let a = -1, b = -1; for (let x = 0; x < w; x++) if (label[y * w + x] === bestLabel) { if (a < 0) a = x; b = x; } if (a >= 0) { pts.push({ x: a, y }); if (b !== a) pts.push({ x: b, y }); } }
+  pts.sort((p, q) => p.x - q.x || p.y - q.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [], upper = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  let hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  if (hull.length < 4) return null;
+  const area = (poly) => { let s = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; s += a.x * b.y - b.x * a.y; } return Math.abs(s) / 2; };
+  const hullArea = area(hull);
+  // Down to four sides, wrapping the patch from outside so nothing of the page is cut: keep removing the side
+  // whose removal adds the least area, by extending its two neighbours until they meet.
+  while (hull.length > 4) {
+    const m = hull.length; let pick = -1, least = Infinity, meet = null;
+    for (let i = 0; i < m; i++) {
+      const p0 = hull[(i + m - 1) % m], p1 = hull[i], p2 = hull[(i + 1) % m], p3 = hull[(i + 2) % m];
+      const d1x = p1.x - p0.x, d1y = p1.y - p0.y, d2x = p2.x - p3.x, d2y = p2.y - p3.y, den = d1x * d2y - d1y * d2x;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((p3.x - p0.x) * d2y - (p3.y - p0.y) * d2x) / den, u = ((p3.x - p0.x) * d1y - (p3.y - p0.y) * d1x) / den;
+      if (t < 1 || u < 1) continue;   // the neighbours only meet beyond this side when both are extended forwards
+      const X = { x: p0.x + t * d1x, y: p0.y + t * d1y }, added = Math.abs(cross(p1, X, p2)) / 2;
+      if (added < least) { least = added; pick = i; meet = X; }
+    }
+    if (pick < 0) return null;
+    if (pick === m - 1) { hull[pick] = meet; hull.shift(); } else hull.splice(pick, 2, meet);
+  }
+  const quadArea = area(hull);
+  if (hullArea < 0.9 * quadArea || quadArea < CROP_MIN_SHARE * n) return null;   // the patch isn't four-sided
+  if (quadArea > CROP_FULL_SHARE * n) return null;                               // the page already fills the frame
+  const cx = hull.reduce((t, p) => t + p.x, 0) / 4, cy = hull.reduce((t, p) => t + p.y, 0) / 4;
+  let q = hull.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));   // clockwise on screen
+  let first = 0; for (let i = 1; i < 4; i++) if (q[i].x + q[i].y < q[first].x + q[first].y) first = i;
+  q = [0, 1, 2, 3].map((i) => q[(first + i) % 4]);
+  for (let i = 0; i < 4; i++) {   // no corner sharper than 45 degrees or flatter than 135
+    const a = q[(i + 3) % 4], b = q[i], c = q[(i + 1) % 4];
+    const cos = ((a.x - b.x) * (c.x - b.x) + (a.y - b.y) * (c.y - b.y)) / (Math.hypot(a.x - b.x, a.y - b.y) * Math.hypot(c.x - b.x, c.y - b.y) || 1);
+    if (Math.abs(cos) > 0.71) return null;
+  }
+  // A little room around the page, so nothing written at its edge is lost.
+  return q.map((p) => ({ x: Math.min(w - 1, Math.max(0, p.x + (p.x - cx) * CROP_MARGIN)), y: Math.min(h - 1, Math.max(0, p.y + (p.y - cy) * CROP_MARGIN)) }));
+}
+// Solves for the 3x3 perspective matrix taking the rectangle (0,0)-(W,H) onto quad (clockwise from top left).
+function quadMatrix(W, H, quad) {
+  const from = [[0, 0], [W, 0], [W, H], [0, H]], A = [];
+  for (let i = 0; i < 4; i++) { const [x, y] = from[i], u = quad[i].x, v = quad[i].y; A.push([x, y, 1, 0, 0, 0, -u * x, -u * y, u]); A.push([0, 0, 0, x, y, 1, -v * x, -v * y, v]); }
+  for (let c = 0; c < 8; c++) {
+    let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    if (Math.abs(A[p][c]) < 1e-9) return null;
+    [A[c], A[p]] = [A[p], A[c]];
+    for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k < 9; k++) A[r][k] -= f * A[c][k]; }
+  }
+  return A.map((row, i) => row[8] / row[i]).concat(1);
+}
+// Draws the part of `source` (a canvas) inside quad as a flat W x H page.
+function flattenQuad(source, quad, W, H) {
+  const m = quadMatrix(W, H, quad); if (!m) return null;
+  const sw = source.width, sh = source.height, sd = source.getContext("2d").getImageData(0, 0, sw, sh).data;
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  const octx = out.getContext("2d"), img = octx.createImageData(W, H), od = img.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = m[6] * x + m[7] * y + 1, u = (m[0] * x + m[1] * y + m[2]) / d, v = (m[3] * x + m[4] * y + m[5]) / d;
+    const x0 = Math.min(sw - 1, Math.max(0, Math.floor(u))), y0 = Math.min(sh - 1, Math.max(0, Math.floor(v))), x1 = Math.min(sw - 1, x0 + 1), y1 = Math.min(sh - 1, y0 + 1);
+    const fx = Math.min(1, Math.max(0, u - x0)), fy = Math.min(1, Math.max(0, v - y0));
+    const a = (y0 * sw + x0) * 4, b = (y0 * sw + x1) * 4, c = (y1 * sw + x0) * 4, e = (y1 * sw + x1) * 4, o = (y * W + x) * 4;
+    for (let k = 0; k < 3; k++) od[o + k] = (sd[a + k] * (1 - fx) + sd[b + k] * fx) * (1 - fy) + (sd[c + k] * (1 - fx) + sd[e + k] * fx) * fy;
+    od[o + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+const isImageFile = (file) => /^image\//.test(file.type || "") || /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+async function decodeImage(file) {
+  try { return await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch (_) {
+    return new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { URL.revokeObjectURL(url); res(img); }; img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("can't decode")); }; img.src = url; });
+  }
+}
+// Looks for the page in a photo. Returns { canvas } with the squared-up page, or null when the whole photo should be used.
+async function cropToPage(file) {
+  if (!isImageFile(file) || file.type === "image/gif") return null;
+  try {
+    const src = await decodeImage(file);
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    const ds = CROP_DETECT_EDGE / Math.max(w, h), dw = Math.max(1, Math.round(w * ds)), dh = Math.max(1, Math.round(h * ds));
+    const small = document.createElement("canvas"); small.width = dw; small.height = dh;
+    const sctx = small.getContext("2d", { willReadFrequently: true }); sctx.drawImage(src, 0, 0, dw, dh);
+    const px = sctx.getImageData(0, 0, dw, dh).data, gray = new Uint8Array(dw * dh);
+    for (let i = 0; i < gray.length; i++) gray[i] = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000;
+    const quad = findPageQuad(gray, dw, dh);
+    if (!quad) { src.close?.(); return null; }
+    // Work from a copy no larger than needed, then flatten the page out of it.
+    const ws = Math.min(1, (PHOTO_MAX_EDGE * 1.4) / Math.max(w, h)), work = document.createElement("canvas");
+    work.width = Math.round(w * ws); work.height = Math.round(h * ws);
+    work.getContext("2d", { willReadFrequently: true }).drawImage(src, 0, 0, work.width, work.height); src.close?.();
+    const q = quad.map((p) => ({ x: p.x / ds * ws, y: p.y / ds * ws }));
+    const len = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    let W = Math.max(len(q[0], q[1]), len(q[3], q[2])), H = Math.max(len(q[1], q[2]), len(q[0], q[3]));
+    const fit = Math.min(1, PHOTO_MAX_EDGE / Math.max(W, H)); W = Math.round(W * fit); H = Math.round(H * fit);
+    if (W < 200 || H < 200) return null;
+    const canvas = flattenQuad(work, q, W, H);
+    return canvas ? { canvas } : null;
+  } catch (_) { return null; }
+}
+// Shows the squared-up page and waits for a choice: resolves to a File (use the crop), null (use the whole photo) or "cancel".
+function offerCrop(file, crop) {
+  return new Promise((resolve) => {
+    let done = false; const finish = (v) => { if (done) return; done = true; S.cropClosed = null; resolve(v); };
+    S.cropClosed = () => finish("cancel");   // closing the box any other way cancels
+    openModal(`<h2>Cropped to the page</h2><p class="hint">Check that nothing is cut off, especially anything written by hand near the edges.</p>
+      <div style="text-align:center;margin-bottom:12px"><img src="${crop.canvas.toDataURL("image/jpeg", 0.7)}" alt="The photo cropped to the page" style="max-width:100%;max-height:55vh;border:1.5px solid var(--line)"></div>
+      <div class="btn-row"><button class="btn primary" id="cropUse">Use this</button><button class="btn" id="cropWhole">Use the whole photo</button><button class="btn" id="cropCancel">Cancel</button></div>`);
+    $("cropUse").addEventListener("click", () => crop.canvas.toBlob((blob) => {
+      finish(blob ? new File([blob], (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg", lastModified: file.lastModified || Date.now() }) : null); closeModal();
+    }, "image/jpeg", 0.88));
+    $("cropWhole").addEventListener("click", () => { finish(null); closeModal(); });
+    $("cropCancel").addEventListener("click", () => closeModal());
+  });
+}
 // Phone photos are far larger than the reader needs. Shrinking one first makes the upload quick on a weak
 // signal, and turns HEIC into JPEG, which the reader requires. Anything that can't be shrunk goes up as it is.
 const PHOTO_MAX_EDGE = 2200, PHOTO_KEEP_BYTES = 3 * 1048576;
@@ -1062,7 +1215,10 @@ async function startRead(file) {
   if (S.ai && !confirm("Discard the review that's open and read this one instead? Its file stays saved under Admin, Documents.")) return;
   const btns = [$("aiReadBtn"), $("aiCameraBtn")]; btns.forEach((b) => (b.disabled = true));
   aiStatus("Getting it ready…");
-  file = await shrinkPhoto(file);
+  const crop = await cropToPage(file);
+  const choice = crop ? await offerCrop(file, crop) : null;
+  if (choice === "cancel") { aiStatus(""); btns.forEach((b) => (b.disabled = false)); return; }
+  file = choice || await shrinkPhoto(file);
   aiStatus("Uploading…");
   const doc = await createInvoice({ file, vendor: $("aiVendor").value.trim() || "Unknown vendor", doc_type: aiType() });
   if (doc) { $("aiFile").value = ""; $("aiVendor").value = ""; await readDocument(doc); }
