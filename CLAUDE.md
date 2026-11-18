@@ -21,7 +21,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 ## Data model (`apparel` schema)
 
 - **`items`:** one row per SKU and size, with `unit_cost`, `reorder_threshold`, `active` and `is_test`.
-- **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero. A checkout needs a `department_id`; who did it is `performed_by`.
+- **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero. A checkout needs a `department_id`. `performed_by` is who it's for: themselves for checkout users, anyone for admins. `entered_by` is who actually entered it, set by a trigger.
 - **`inventory` view:** gives `on_hand` and `low_stock`, which is `on_hand <= reorder_threshold`. The app shows that flag as **Low**.
 - **`invoices`:** every vendor document, not just invoices. `doc_type` is `packing_slip`, `invoice` or `other`.
   - A packing slip adds stock and never changes cost (`apparel.receive_packing_slip`).
@@ -32,7 +32,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 - **No employees:** check outs go by department since 2026-11-18, and the `employees` table and `transactions.employee_id` were deleted the same day.
 - **`app_users`:** each user's role is `checkout` or `admin`, and their own `department_id`, which check out fills in on every item.
   - Row-level security lets only active app users in.
-  - Checkout users can read and record check outs.
+  - Checkout users can read and record check outs as themselves.
   - Admins can do everything else.
 
 ## How changes go live

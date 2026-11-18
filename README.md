@@ -20,6 +20,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script. (Test Employee is no longer used since check outs went by department.)
 - `supabase/migrations/20261118120000_checkout_by_department.sql` — check out by department: each user's own department (`apparel.app_users.department_id`), check outs that need a department and no employee, the Users screen's department column, and coding reports that list who checked each item out. See "Check out by department" below. Run once, the same way, before deploying `admin-users` and pushing the page; safe to re-run.
+- `supabase/migrations/20261118170000_admin_checkout_for_others.sql` — lets admins record check outs for any user, while everyone else still checks out only as themselves, and adds `entered_by`, who actually entered each transaction. Run once, the same way, before pushing the page that goes with it; safe to re-run.
 - `supabase/migrations/20261118150000_drop_employees.sql` — deletes the `apparel.employees` table and `employee_id` on check outs, once check outs went by department. Can't be undone; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
@@ -66,6 +67,7 @@ What it sets up:
 | Who | Can |
 |---|---|
 | Active member with role `checkout` | read everything (needed for on-hand counts); record checkout transactions stamped with their own id |
+| Active admin, recording | any transaction for any user (a check out for someone else); `entered_by` always records the admin |
 | Active admin | all of the above plus receive/adjust transactions, edit and delete items, departments and transactions, and insert/update/delete rows in `apparel.app_users` (never their own row) |
 | Anyone else (incl. other-app logins) | nothing |
 
@@ -263,6 +265,9 @@ A check out records only the item, the quantity and the department it is charged
 - **Change it per item.** Each item in the cart has its own *Charge to* dropdown, for picking up for someone in another department. Scanning the same item again adds to the line still on your department, so one vest for Parks and one for your own crew stay on separate lines. Moving a line onto a department that already has that item joins the two.
 - **No department set.** If your account has no department (or it was deactivated), an orange note says so, each item starts on *Choose a department*, and Confirm stays off until every item has one.
 - **Test mode** fills in Test Department instead.
+- **Admins can check out for someone else.** Admins see a *Checked out by* dropdown at the top of the cart, starting on themselves. Picking another active user records the check out as theirs and fills in their department; lines still on the previous person's department follow, and lines changed by hand stay put. It goes back to the admin after each check out. Checkout users don't see it, and the database refuses a check out they record under anyone else's name.
+- **Who entered it.** Every check out also records who actually entered it (`transactions.entered_by`, set from the login and never changed). When it isn't the person it's for, Recent activity and Reports show *entered by* under the name.
+- **Fixing a check out later.** Admins have an **Edit** button on check outs in Recent activity and in Reports (for older ones, run the report for that date range). It changes who it's for, the department and the notes; picking a person fills in their department. Quantity isn't edited there: undo and check out again. A check out on a saved invoice coding report can't be edited until that report is deleted.
 - **The old employees are deleted.** The Employees screen and the employee search are gone, and `supabase/migrations/20261118150000_drop_employees.sql` deleted the `apparel.employees` table and the employee names on earlier check outs. The check outs themselves are untouched. The notes field is still there for anything worth recording, and it now shows in recent activity.
 
 Setup, once, in this order:

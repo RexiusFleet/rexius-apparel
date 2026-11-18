@@ -388,6 +388,8 @@ tr.low td { background: var(--orange-soft); }
 
       <div class="panel" id="cartPanel">
         <h3>Items</h3>
+        <div class="field" id="coForField" style="display:none"><label for="coFor">Checked out by</label><select id="coFor"></select>
+          <p class="hint" id="coForHint" style="margin:4px 0 0;display:none"></p></div>
         <p class="callout" id="deptHint" style="display:none"></p>
         <div id="cartLines"><div class="empty">Nothing scanned yet.</div></div>
       </div>
@@ -615,7 +617,7 @@ const S = {
   session: null, me: null, role: null,
   items: [], inventory: [], departments: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
   cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
-  report: null, testMode: false, testIds: new Set()
+  report: null, testMode: false, testIds: new Set(), coFor: null, activity: []
 };
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
@@ -709,7 +711,7 @@ async function loadRefs() {
   S.items = it.data; S.inventory = inv.data; S.departments = dp.data.sort(byDeptCode);
   S.testIds = new Set(S.items.filter((i) => i.is_test).map((i) => i.id));
   await loadUserNames();
-  renderTestMode(); renderUserDeptSelect(); renderInventory(); updateLowBadge(); renderCart();
+  renderTestMode(); renderUserDeptSelect(); renderInventory(); updateLowBadge(); renderCoFor(); renderCart();
   if (isAdmin()) { renderAdminItems(); renderDepts(); renderLabelPicker(); if (S.adminUsers.length) renderUsers(); await loadInvoices(); await loadAliases(); }
 }
 async function refreshInventory() {
@@ -805,11 +807,14 @@ function onScan(code) {
   if (navigator.vibrate) navigator.vibrate(60);
   addToCart(it);
 }
-// Each cart line is charged to its own department. A new line starts on your department
-// (set by an admin under Admin → Users); in test mode, on the test department.
+// Each cart line is charged to its own department. A new line starts on the department of the
+// person it's for (set by an admin under Admin → Users); in test mode, on the test department.
+// Admins can record a check out for someone else (S.coFor); everyone else checks out as themselves.
 const checkoutDepts = () => S.departments.filter((d) => d.active && rowInScope(d));
+const checkoutFor = () => (isAdmin() && S.coFor ? S.users.find((u) => u.user_id === S.coFor) : null);
+const checkoutUserId = () => checkoutFor()?.user_id || S.session.user.id;
 function defaultDeptId() {
-  const usable = checkoutDepts(), mine = S.me?.department_id;
+  const usable = checkoutDepts(), mine = checkoutFor() ? checkoutFor().department_id : S.me?.department_id;
   if (mine && usable.some((d) => d.id === mine)) return mine;
   return S.testMode && usable.length ? usable[0].id : "";
 }
@@ -848,10 +853,33 @@ function renderDeptHint() {
   const el = $("deptHint"), missing = !defaultDeptId();
   el.style.display = missing ? "" : "none";
   if (!missing) return;
-  const mine = S.departments.find((d) => d.id === S.me?.department_id);
+  const other = checkoutFor(), theirs = S.departments.find((d) => d.id === (other ? other.department_id : S.me?.department_id));
+  const who = other ? `${other.display_name || "This user"}'s` : "Your";
   el.textContent = S.testMode ? "There's no active test department. Add one under Admin → Departments while test mode is on."
-    : `${mine ? `Your department, ${deptLabel(mine)}, is inactive` : "Your account doesn't have a department yet"}, so choose one for each item. ${isAdmin() ? "Set yours under Admin → Users" : "An admin can set it under Admin → Users"}, and it will be filled in from then on.`;
+    : `${theirs ? `${who} department, ${deptLabel(theirs)}, is inactive` : other ? `${who} account doesn't have a department yet` : "Your account doesn't have a department yet"}, so choose one for each item. ${other ? "Set theirs under Admin → Users" : isAdmin() ? "Set yours under Admin → Users" : "An admin can set it under Admin → Users"}, and it will be filled in from then on.`;
 }
+// Admins only: who the check out is for. Lines still on the previous person's department follow the new person.
+function renderCoFor() {
+  const show = isAdmin(); $("coForField").style.display = show ? "" : "none";
+  if (!show) { S.coFor = null; return; }
+  const me = S.session.user.id;
+  if (S.coFor && !S.users.some((u) => u.user_id === S.coFor && u.active)) S.coFor = null;
+  const others = S.users.filter((u) => u.active && u.user_id !== me).sort((a, b) => (a.display_name || "").localeCompare(b.display_name || ""));
+  $("coFor").innerHTML = `<option value="${me}">${esc(S.me?.display_name || "Me")} (you)</option>` + others.map((u) => `<option value="${u.user_id}">${esc(u.display_name || "Unnamed user")}</option>`).join("");
+  $("coFor").value = S.coFor || me;
+  const other = checkoutFor();
+  $("coForHint").style.display = other ? "" : "none";
+  $("coForHint").textContent = other ? `Recorded as ${other.display_name || "their"}'s check out, entered by you. Their department is filled in.` : "";
+}
+$("coFor").addEventListener("change", () => {
+  const before = defaultDeptId();
+  S.coFor = $("coFor").value === S.session.user.id ? null : $("coFor").value;
+  const after = defaultDeptId();
+  if (before !== after) S.cart.forEach((l) => { if (l.dept === before) l.dept = after; });
+  const joined = [];   // the same item on the same department becomes one line
+  S.cart.forEach((l) => { const twin = joined.find((x) => x.item.id === l.item.id && x.dept === l.dept); if (twin) twin.qty += l.qty; else joined.push(l); });
+  S.cart = joined; renderCoFor(); renderCart();
+});
 $("cartLines").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const i = Number(b.dataset.i);
@@ -885,15 +913,16 @@ $("confirmCheckoutBtn").addEventListener("click", async () => {
   const btn = $("confirmCheckoutBtn"); btn.disabled = true;
   const rows = S.cart.map((l) => ({
     type: "checkout", item_id: l.item.id, qty_change: -l.qty, unit_cost: l.item.unit_cost,
-    department_id: l.dept, performed_by: S.session.user.id,
+    department_id: l.dept, performed_by: checkoutUserId(),
     notes: $("coNotes").value.trim() || null
   }));
   const { error } = await sb.from("transactions").insert(rows);
   if (error) { btn.disabled = false; return fail(error, "Checkout failed"); }
   const n = S.cart.reduce((a, l) => a + l.qty, 0), depts = [...new Set(S.cart.map((l) => l.dept))];
   const to = depts.length === 1 ? deptLabel(S.departments.find((d) => d.id === depts[0])) || "1 department" : `${depts.length} departments`;
-  toast(`Checked out ${n} item${n === 1 ? "" : "s"} to ${to}`);
-  S.cart = []; $("coNotes").value = "";
+  const other = checkoutFor();
+  toast(`Checked out ${n} item${n === 1 ? "" : "s"}${other ? ` for ${other.display_name || "them"}` : ""} to ${to}`);
+  S.cart = []; S.coFor = null; $("coNotes").value = ""; renderCoFor();
   await refreshInventory(); renderCart(); window.scrollTo(0, 0);
 });
 
@@ -1736,20 +1765,22 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, report_id, item:items(name,size,sku), department:departments(name,code), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, entered_by, invoice_id, report_id, item:items(name,size,sku), department:departments(id,name,code), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
+  S.activity = data;
   const tb = $("actTable").querySelector("tbody");
   tb.innerHTML = data.length ? data.map((t) => {
     const what = { checkout: "Checked out", receive: "Received", adjust: "Adjusted" }[t.type];
     const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">${esc(docLabel(t.invoice))}</button></div>` : "";
     const details = t.type === "checkout" ? esc(deptLabel(t.department)) + (t.notes ? `<div class="meta sub">${esc(t.notes)}</div>` : "") : esc(t.notes || "") + inv;
-    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${details}</td><td>${esc(userName(t.performed_by) || "—")}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
+    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${details}</td><td>${esc(userName(t.performed_by) || "—")}${enteredBy(t)}</td><td class="actions">${isAdmin() && t.type === "checkout" ? `<button class="btn small" data-edit-tx="${t.id}">Edit</button>` : ""}${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
 }
 $("actTable").addEventListener("click", async (e) => {
   const iv = e.target.closest("[data-inv]"); if (iv) { if (!S.invoices.length) await loadInvoices(); return openInvoice(iv.dataset.inv); }
+  const ed = e.target.closest("[data-edit-tx]"); if (ed) return openEditCheckout(S.activity.find((t) => t.id === ed.dataset.editTx), loadActivity);
   const b = e.target.closest("[data-del]"); if (!b) return;
   if (b.dataset.coded) return toast("This check out is on a saved invoice coding report. Delete that report first (Admin, Documents, Report).", true);
   if (!confirm("Remove this transaction? Inventory will be recalculated.")) return;
@@ -1757,6 +1788,32 @@ $("actTable").addEventListener("click", async (e) => {
   if (error) return fail(error, "Couldn't remove it");
   toast("Transaction removed"); await refreshInventory(); loadActivity();
 });
+
+// "entered by Andy" under the name, when an admin recorded a check out for someone else.
+const enteredBy = (t) => t.entered_by && t.entered_by !== t.performed_by ? `<div class="meta sub">entered by ${esc(userName(t.entered_by) || "an admin")}</div>` : "";
+
+// Admins fix a check out after the fact: who it's for, its department and notes. Quantity isn't
+// changed here (undo it and check out again), and one on a saved coding report is left alone.
+function openEditCheckout(t, after) {
+  if (!t) return;
+  if (t.report_id) return toast("This check out is on a saved invoice coding report. Delete that report first (Admin, Documents, Report).", true);
+  const deptId = t.department?.id || "";
+  const people = S.users.filter((u) => u.active || u.user_id === t.performed_by).sort((a, b) => (a.display_name || "").localeCompare(b.display_name || ""));
+  const depts = S.departments.filter((d) => (d.active && rowInScope(d)) || d.id === deptId);
+  openModal(`<h2>Edit check out</h2><p>${esc(t.item ? itemLabel(t.item) : "")} · ${-t.qty_change} · ${esc(fmtWhen(t.created_at))}</p>
+    <div class="field"><label for="ecBy">Checked out by</label><select id="ecBy">${people.map((u) => `<option value="${u.user_id}"${u.user_id === t.performed_by ? " selected" : ""}>${esc(u.display_name || "Unnamed user")}${u.active ? "" : " (inactive)"}</option>`).join("")}</select></div>
+    <div class="field"><label for="ecDept">Charge to</label><select id="ecDept">${depts.map((d) => `<option value="${d.id}"${d.id === deptId ? " selected" : ""}>${esc(deptLabel(d))}${d.active ? "" : " (inactive)"}</option>`).join("")}</select></div>
+    <div class="field"><label for="ecNotes">Notes (optional)</label><input id="ecNotes" value="${esc(t.notes || "")}"></div>
+    <p class="hint">Changing the department moves the charge in reports. To change the quantity, undo it in Recent activity and check it out again.</p>
+    <div class="btn-row"><button class="btn primary" id="ecSave">Save changes</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
+  // Picking someone else fills in their department, if they have one.
+  $("ecBy").addEventListener("change", () => { const u = S.users.find((x) => x.user_id === $("ecBy").value); if (u?.department_id && depts.some((d) => d.id === u.department_id)) $("ecDept").value = u.department_id; });
+  $("ecSave").addEventListener("click", async () => {
+    const { error } = await sb.from("transactions").update({ performed_by: $("ecBy").value, department_id: $("ecDept").value, notes: $("ecNotes").value.trim() || null }).eq("id", t.id);
+    if (error) return fail(error, "Couldn't save");
+    closeModal(); toast("Check out updated"); after();
+  });
+}
 
 /* =========================================================
    REPORTS
@@ -1787,7 +1844,7 @@ async function runReport() {
   const from = $("repFrom").value, to = $("repTo").value;
   if (!from || !to) return toast("Choose both dates.", true);
   const start = new Date(from + "T00:00:00"), end = new Date(to + "T00:00:00"); end.setDate(end.getDate() + 1);
-  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, item:items(name,size,sku,category), department:departments(id,name,code)")
+  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, entered_by, report_id, item:items(name,size,sku,category), department:departments(id,name,code)")
     .eq("type", "checkout").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at");
   const deptFilter = $("repDept").value;
   if (deptFilter) q = q.eq("department_id", deptFilter);
@@ -1821,13 +1878,16 @@ async function runReport() {
   Object.values(groups).sort((a, b) => b.total - a.total).forEach((g) => {
     html += `<div class="group panel quiet"><div class="group-head"><h3>${g.dept?.missing ? esc(g.dept.name) : g.dept ? esc(deptLabel(g.dept)) : "No department"}</h3><span class="total">${money(g.total)}</span></div>
       ${g.dept?.missing ? `<p class="hint">No department has code ${SETUP_FEE_DEPT_CODE} yet. Add it under Admin, Departments, and these set-up fees will show under it.</p>` : ""}
-      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Checked out by</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>`;
-    g.rows.forEach((t) => { html += `<tr><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${esc(userName(t.performed_by))}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${-t.qty_change}</td><td class="num">${money(t.unit_cost)}</td><td class="num">${money(-t.qty_change * Number(t.unit_cost || 0))}</td></tr>`; });
-    g.fees.forEach((f) => { html += `<tr><td>${new Date(f.date + "T00:00:00").toLocaleDateString()}</td><td></td><td>Set-up fees: ${esc(f.vendor)}${f.invoice_no ? " invoice " + esc(f.invoice_no) : ""}</td><td class="num"></td><td class="num"></td><td class="num">${money(f.setup_fees)}</td></tr>`; });
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Checked out by</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th><th></th></tr></thead><tbody>`;
+    g.rows.forEach((t) => { html += `<tr><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${esc(userName(t.performed_by))}${enteredBy(t)}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${-t.qty_change}</td><td class="num">${money(t.unit_cost)}</td><td class="num">${money(-t.qty_change * Number(t.unit_cost || 0))}</td><td class="actions"><button class="btn small" data-rep-edit="${t.id}">Edit</button></td></tr>`; });
+    g.fees.forEach((f) => { html += `<tr><td>${new Date(f.date + "T00:00:00").toLocaleDateString()}</td><td></td><td>Set-up fees: ${esc(f.vendor)}${f.invoice_no ? " invoice " + esc(f.invoice_no) : ""}</td><td class="num"></td><td class="num"></td><td class="num">${money(f.setup_fees)}</td><td></td></tr>`; });
     html += `</tbody></table></div></div>`;
   });
   out.innerHTML = html;
 }
+$("reportOut").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rep-edit]"); if (b) openEditCheckout(S.report?.rows.find((t) => t.id === b.dataset.repEdit), runReport);
+});
 $("csvBtn").addEventListener("click", () => {
   if (!S.report) return;
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -1883,7 +1943,7 @@ async function setTestMode(on) {
   S.testMode = on && isAdmin();
   try { if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
   // Nothing carries over, so a cart, half-done receive or report from one side can't be finished on the other.
-  S.cart = []; S.rcvItem = null; S.ai = null; S.report = null;
+  S.cart = []; S.coFor = null; S.rcvItem = null; S.ai = null; S.report = null;
   $("pickArea").style.display = "none"; $("rcvList").style.display = "none";
   $("rcvSearch").value = ""; $("rcvChosen").textContent = ""; $("rcvCost").value = ""; $("confirmReceiveBtn").disabled = true;
   $("aiReview").style.display = "none"; $("aiReview").innerHTML = "";
@@ -2040,7 +2100,7 @@ const ADMIN_USERS_URL = `${SUPABASE_URL}/functions/v1/admin-users`;
 
 // Display names for the activity log and reports. Any member can read these rows.
 async function loadUserNames() {
-  const { data, error } = await sb.from("app_users").select("user_id, display_name, role, active");
+  const { data, error } = await sb.from("app_users").select("user_id, display_name, role, active, department_id");
   if (error) { console.warn("Couldn't load user names", error); return; }
   S.users = data || [];
 }
@@ -2075,7 +2135,7 @@ async function loadUsers(quiet) {
   try {
     const { users } = await adminUsers("list");
     S.adminUsers = users || [];
-    S.users = S.adminUsers.map((u) => ({ user_id: u.user_id, display_name: u.display_name, role: u.role, active: u.active }));
+    S.users = S.adminUsers.map((u) => ({ user_id: u.user_id, display_name: u.display_name, role: u.role, active: u.active, department_id: u.department_id }));
   } catch (e) {
     if (!quiet) fail(e, "Couldn't load users");
     $("userTable").querySelector("tbody").innerHTML = `<tr><td colspan="7" class="empty">Couldn't load users. ${esc(e.message)}</td></tr>`;
