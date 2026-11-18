@@ -11,12 +11,15 @@
 //
 // Actions:
 //   list                                   -> { users: [...] }
-//   create  { email, password, role, display_name? }
+//   create  { email, password, role, display_name?, department_id? }
 //   set_role        { user_id, role }
 //   set_display_name{ user_id, display_name }
+//   set_department  { user_id, department_id }   (null clears it; allowed on yourself)
 //   reset_password  { user_id, password }
 //   deactivate      { user_id }
 //   reactivate      { user_id }
+//
+// A user's department is filled in on every item they check out.
 //
 // Every response is JSON. Errors look like { "error": "message" } with a
 // 4xx/5xx status. Nothing is hardcoded: SUPABASE_URL, SUPABASE_ANON_KEY and
@@ -109,9 +112,19 @@ function parsePassword(v: unknown): string {
   return v;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function parseUserId(v: unknown): string {
   const id = str(v, "user_id");
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new HttpError(400, "user_id must be a UUID.");
+  if (!UUID_RE.test(id)) throw new HttpError(400, "user_id must be a UUID.");
+  return id;
+}
+
+/** A department id, or null for none. */
+function parseDepartmentId(v: unknown): string | null {
+  const id = str(v, "department_id", { required: false });
+  if (!id) return null;
+  if (!UUID_RE.test(id)) throw new HttpError(400, "department_id must be a UUID.");
   return id;
 }
 
@@ -163,6 +176,14 @@ async function getAppUser(admin: SupabaseClient, userId: string): Promise<AppUse
   return data as AppUserRow;
 }
 
+/** Checks the department exists, so a bad id gets a clear message rather than a foreign-key error. */
+async function requireDepartment(admin: SupabaseClient, departmentId: string | null) {
+  if (!departmentId) return;
+  const { data, error } = await admin.from("departments").select("id").eq("id", departmentId).maybeSingle();
+  if (error) throw new HttpError(500, `Couldn't read apparel.departments: ${error.message}`);
+  if (!data) throw new HttpError(400, "That department doesn't exist.");
+}
+
 function forbidSelf(caller: User, targetId: string, what: string) {
   if (caller.id === targetId) throw new HttpError(400, `You can't ${what} your own account. Ask another admin.`);
 }
@@ -186,6 +207,8 @@ async function actCreate({ admin, body }: Ctx) {
   const password = parsePassword(body.password);
   const role = parseRole(body.role);
   const display_name = str(body.display_name, "display_name", { required: false, max: 120 }) || email.split("@")[0];
+  const department_id = parseDepartmentId(body.department_id);
+  await requireDepartment(admin, department_id);
 
   // Does a login already exist for this email (e.g. from the other app)?
   const { data: existingId, error: lookupErr } = await admin.rpc("auth_user_id_by_email", { p_email: email });
@@ -226,9 +249,13 @@ async function actCreate({ admin, body }: Ctx) {
     .maybeSingle();
   if (existingRow?.active) throw new HttpError(409, "That person is already an active apparel user.");
 
+  // The department is only written when the page sent one (or sent null to clear it),
+  // so re-adding someone from an older page keeps the department they had.
+  const row: Record<string, unknown> = { user_id: userId, display_name, role, active: true };
+  if (body.department_id !== undefined) row.department_id = department_id;
   const { error: upsertErr } = await admin
     .from("app_users")
-    .upsert({ user_id: userId, display_name, role, active: true }, { onConflict: "user_id" });
+    .upsert(row, { onConflict: "user_id" });
   if (upsertErr) throw new HttpError(500, `Login is ready but couldn't add the app-user row: ${upsertErr.message}`);
 
   return {
@@ -237,6 +264,7 @@ async function actCreate({ admin, body }: Ctx) {
     email,
     role,
     display_name,
+    department_id,
     created_login: createdLogin,
     message: createdLogin
       ? "Login created and added to the apparel app."
@@ -261,6 +289,17 @@ async function actSetDisplayName({ admin, body }: Ctx) {
   const { error } = await admin.from("app_users").update({ display_name }).eq("user_id", userId);
   if (error) throw new HttpError(500, `Couldn't rename: ${error.message}`);
   return { ok: true, user_id: userId, display_name };
+}
+
+// Allowed on yourself too, like renaming: an admin sets their own department here.
+async function actSetDepartment({ admin, body }: Ctx) {
+  const userId = parseUserId(body.user_id);
+  const department_id = parseDepartmentId(body.department_id);
+  await getAppUser(admin, userId);
+  await requireDepartment(admin, department_id);
+  const { error } = await admin.from("app_users").update({ department_id }).eq("user_id", userId);
+  if (error) throw new HttpError(500, `Couldn't change the department: ${error.message}`);
+  return { ok: true, user_id: userId, department_id };
 }
 
 async function actResetPassword({ admin, body }: Ctx) {
@@ -289,6 +328,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   create: actCreate,
   set_role: actSetRole,
   set_display_name: actSetDisplayName,
+  set_department: actSetDepartment,
   reset_password: actResetPassword,
   deactivate: (ctx) => setActive(ctx, false),
   reactivate: (ctx) => setActive(ctx, true),

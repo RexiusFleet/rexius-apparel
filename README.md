@@ -18,7 +18,8 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261027170000_move_to_apparel_schema.sql` — **current layout**: everything lives in its own `apparel` schema (`apparel.items`, `apparel.transactions`, …). Run once after an admin has exposed the `apparel` schema under Project Settings → Data API. Older scripts are kept in `sql_history/` for reference only.
 - `supabase/migrations/20261029100000_seed_highvis_items.sql` — the starting product list (short-sleeve tee, long-sleeve tee, sweatshirt and safety vest in S–4XL, plus a one-size ball cap: 29 items), built from the "High-Vis Product Info" sheet. Run once, the same way; safe to re-run after the sheet changes, and it renames the original HV-TS-* tee SKUs in place if they were loaded earlier.
 - `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
-- `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script.
+- `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script. (Test Employee is no longer used since check outs went by department.)
+- `supabase/migrations/20261118120000_checkout_by_department.sql` — check out by department: each user's own department (`apparel.app_users.department_id`), check outs that need a department and no employee, the Users screen's department column, and coding reports that list who checked each item out. See "Check out by department" below. Run once, the same way, before deploying `admin-users` and pushing the page; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
 - `supabase/migrations/20261110120000_invoice_coding_reports.sql` — invoice coding reports: the `apparel.coding_reports` table, a `report_id` on check outs, and the `apparel.coding_report()` function that previews or saves one. See "Invoice coding reports" below. Run once, the same way, before pushing the page that goes with it; safe to re-run.
@@ -27,9 +28,9 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `testing/` — `test-packing-slip.pdf` and `test-invoice.pdf`, a made-up vendor's packing list and invoice for trying packing slip and invoice reading in test mode, and `make_test_documents.py`, which rebuilds both (`python3 testing/make_test_documents.py`). Deploy this folder alongside `index.html`; the app links to the PDFs.
 - `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic document reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
-- `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column; people are identified by name and home department only. Run once, the same way, on a project that was set up before it existed.
+- `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column. Run once, the same way, on a project that was set up before it existed. (Employees themselves are no longer used; see "Check out by department".)
 - `supabase/migrations/20261027120000_apparel_rls.sql` — (historical, `public` schema) the row-level security: locks every apparel table to members of `app_users` (the Supabase project is shared with another app) and adds the helper functions the user-management function needs. Supersedes the RLS section of `apparel_schema_public.sql`; safe to re-run.
-- `supabase/functions/admin-users/index.ts` — Edge Function that lets admins create logins, change roles, reset passwords and deactivate/reactivate apparel users without the service-role key ever reaching the browser.
+- `supabase/functions/admin-users/index.ts` — Edge Function that lets admins create logins, change roles, set each user's department, reset passwords and deactivate/reactivate apparel users without the service-role key ever reaching the browser.
 - `supabase/functions/invoice-extract/` — Edge Function that reads a packing slip or invoice with Claude (`index.ts`). The fee spreading and the matching keys live in `spread.ts`, tested with `node supabase/functions/invoice-extract/spread.test.ts`; `index.html` has copies of the matching keys that must stay identical.
 - `supabase/functions/low-stock-alert/` — Edge Function that sends the queued low-stock emails from the app's Gmail account (`index.ts`). The grouping and wording live in `message.ts`, tested with `node supabase/functions/low-stock-alert/message.test.ts`.
 - `supabase/config.toml` — Supabase CLI config (turns off gateway JWT checks for `admin-users`, which verifies the token itself).
@@ -63,8 +64,8 @@ What it sets up:
 
 | Who | Can |
 |---|---|
-| Active member with role `checkout` | read everything (needed for on-hand counts); add employees; record checkout transactions stamped with their own id |
-| Active admin | all of the above plus receive/adjust transactions, edit and delete items, departments, employees and transactions, and insert/update/delete rows in `apparel.app_users` (never their own row) |
+| Active member with role `checkout` | read everything (needed for on-hand counts); record checkout transactions stamped with their own id |
+| Active admin | all of the above plus receive/adjust transactions, edit and delete items, departments and transactions, and insert/update/delete rows in `apparel.app_users` (never their own row) |
 | Anyone else (incl. other-app logins) | nothing |
 
 The second migration, `supabase/migrations/20261027150000_apparel_checkout_role_lockdown.sql`, is what narrows the checkout role to the first row above. Run it after the first one, the same way. In the app, checkout users see only the **Check out** and **Inventory** tabs; Receive, Reports and Admin are hidden.
@@ -91,7 +92,8 @@ Re-run `supabase functions deploy admin-users` whenever `index.ts` changes. Logs
 
 Admin → **Users**:
 
-- **Add user** — email, display name, role and a temporary password (Generate button). The login is created with the email pre-confirmed and the person is added to the app in one step. If the email already has a login in this project (from the other app), it is added with its existing password and no password is changed.
+- **Add user** — email, display name, role, department and a temporary password (Generate button). The login is created with the email pre-confirmed and the person is added to the app in one step. If the email already has a login in this project (from the other app), it is added with its existing password and no password is changed.
+- **Department** — the person's own department, which check out fills in on everything they check out. Admins can set their own here too.
 - **Change role**, **Rename**, **Reset password** (shows the new temporary password once), **Deactivate / Reactivate**.
 - Deactivating only flips the apparel `active` flag. The auth user is not banned, because the same login may be in use by the other app.
 - An admin cannot change their own role or deactivate themselves; another admin has to do that.
@@ -116,7 +118,7 @@ In the app, Admin tab:
 
 1. **Departments** — add each department that gets charged back.
 2. **Items** — use "Add one item per size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, sizes `S, M, L, XL, 2XL, 3XL`). Set the unit cost and reorder threshold.
-3. **Employees** — add names and home departments.
+3. **Users** — give each person a department (the **Department** button), so check out fills it in for them.
 4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling).
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
 
@@ -154,7 +156,7 @@ Stock is bought ahead and invoiced as it arrives, and departments are charged la
 
 - **What goes on it.** The invoice's set-up fees go to department 10. Then every check out not yet on a report, oldest first, whole check outs only, at the cost charged when it was checked out. If those don't fill the invoice, the rest is **Stock Up**. If there are more than fit, the newer ones carry over to the next invoice, and the small balance left by the last one that fits goes to department 10. The lines always add up to the invoice total.
 - **When.** Right after *Update N item costs* on an invoice, the report opens as a preview. *Save report* puts those check outs on that invoice, so each check out is on exactly one report. **Admin → Documents → Report** on any invoice row opens it again, or makes one for an invoice that was only filed. The invoice needs a total.
-- **What accounting gets.** A summary by department code, with Stock Up as its own line, then the detail under each code: date, employee, item, quantity, cost. The vendor and invoice number are at the top. *Print or save as PDF* uses the browser's print dialog, and *Download CSV* has one row per check out plus the set-up, balance and Stock Up rows.
+- **What accounting gets.** A summary by department code, with Stock Up as its own line, then the detail under each code: date, who checked it out, item, quantity, cost. The vendor and invoice number are at the top. *Print or save as PDF* uses the browser's print dialog, and *Download CSV* has one row per check out plus the set-up, balance and Stock Up rows.
 - **Fixing one.** *Delete report* frees its check outs for the next invoice's report; make it again afterwards if needed. A check out on a saved report can't be undone from Recent activity until the report is deleted. Deleting the invoice deletes its report too.
 - **The first report** takes every check out recorded so far.
 
@@ -181,25 +183,25 @@ The function uses Claude Opus 5.5 and typically costs a few cents per document. 
 
 ## Test product and test mode
 
-For trying the app out, or checking a new feature, without touching real numbers or real people. Test items, employees and departments are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show in the Admin lists (Items, Employees, Departments), with a *Test* tag. The starting set is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too, and **Test Employee**, whose home department is **Test Department** (code `TEST`).
+For trying the app out, or checking a new feature, without touching real numbers. Test items and departments are kept out of check out, receiving, inventory, labels, recent activity and reports; they only show in the Admin lists (Items, Departments), with a *Test* tag. The starting set is **Test Product** in S, M and L (`TEST-S`, `TEST-M`, `TEST-L`), with a reorder point of 2 so the low-stock flag can be tried too, and **Test Department** (code `TEST`).
 
 **Admin → Test mode → Turn on test mode** switches every screen over to test data, and only test data, until you turn it off (the orange bar at the top has a *Turn off* button), sign out or close the tab. It is admin-only and applies to that browser tab only. In test mode:
 
 - **Receive** lists only test items. Documents uploaded are saved as test documents, and reading one matches lines to test items only. Try the two samples, linked from Admin → Test mode and the Receive tab. Read `testing/test-packing-slip.pdf` as a packing slip: S 4, M 6 and L 1 come back, with L showing *Ordered 2*, so 11 pieces are received. Read `testing/test-invoice.pdf` as an invoice: each size gets a new cost of $11.50, which is $10.00 plus $1.50 of screen print. The $12.00 set-up fee goes to the test department in the report, $9.50 freight stays out of cost, and the totals match $159.50. Each read costs a few cents.
 - **Print labels** lists only test items, so you can print a test QR label and scan it on **Check out**.
 - **Inventory**, **Recent activity**, **Reports** and **Admin → Documents** show only test data. A test report's CSV is named `TEST-apparel-chargebacks-…`.
-- **Check out** offers only test employees and test departments, so a test checkout touches nothing real: Test Product to Test Employee, charged to Test Department.
+- **Check out** offers only test departments and fills in Test Department on every item, whatever your own department is, so a test checkout touches nothing real.
 
-Outside test mode, real reports, inventory totals and low-stock counts never include test data. The pick lists, employee search and department dropdowns (including the Reports department filter) never offer test records, and checkout users never see them (scanning a test label tells them it is a test label).
+Outside test mode, real reports, inventory totals and low-stock counts never include test data. The pick lists and department dropdowns (including the Reports department filter and a user's department) never offer test records, and checkout users never see them (scanning a test label tells them it is a test label).
 
-**Anything you add while test mode is on is a test record**: items (including one item per size), employees (including a new employee added from the check out screen), departments and documents. Anything added outside test mode is real. The flag is only set when a record is created, so a real item, employee or department with history can never be hidden from reports later.
+**Anything you add while test mode is on is a test record**: items (including one item per size), departments and documents. Anything added outside test mode is real. The flag is only set when a record is created, so a real item or department with history can never be hidden from reports later.
 
-**Clear test activity** (Admin → Test mode) deletes every test transaction, test document (with its file), test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test employees and departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
+**Clear test activity** (Admin → Test mode) deletes every test transaction, test document (with its file), test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
 
 Setup, once, in this order:
 
 1. Run `supabase/migrations/20261102120000_test_product.sql` in the SQL Editor (adds the test flags for items and invoices, and the Test Product).
-2. Run `supabase/migrations/20261102180000_test_employee_department.sql` the same way (adds the test flags for employees and departments, and Test Employee and Test Department).
+2. Run `supabase/migrations/20261102180000_test_employee_department.sql` the same way (adds the test flags, Test Department and Test Employee; only Test Department is used now).
 3. Redeploy the invoice reader, which keeps test and real items apart:
 
    ```bash
@@ -232,7 +234,7 @@ Setup, once, in this order:
    supabase functions deploy low-stock-alert --no-verify-jwt
    ```
 
-5. **Try it.** Turn on test mode and click **Clear test activity**, so the test items start at 0. Receive 5 of one Test Product size, then check 3 of them out to Test Employee. That takes it to 2, its reorder point, and a **[TEST]** email should reach you within a minute (look in Spam the first time). Clear test activity afterwards.
+5. **Try it.** Turn on test mode and click **Clear test activity**, so the test items start at 0. Receive 5 of one Test Product size, then check 3 of them out. That takes it to 2, its reorder point, and a **[TEST]** email should reach you within a minute (look in Spam the first time). Clear test activity afterwards.
 
 The emails cost nothing: Gmail is free and the function's few calls a day are well inside the Supabase plan. Changing the Gmail account's password, or turning off its 2-Step Verification, cancels the app password. The emails then stop (the rows show *failed*) until you create a new app password and set it again with `supabase secrets set GMAIL_APP_PASSWORD_APPAREL="..."`; no redeploy is needed. To link the emails to a different address than the live app, set the optional `APPAREL_APP_URL` secret.
 
@@ -252,9 +254,31 @@ If an email doesn't arrive:
   select id, status_code, content, error_msg, created from net._http_response order by id desc limit 10;
   ```
 
+## Check out by department
+
+A check out records only the item, the quantity and the department it is charged to. Who it was for isn't asked: every check out already records who did it, and that person can say who it was for if it ever matters. Reports, recent activity and invoice coding reports show *Checked out by* where they used to show the employee.
+
+- **Your department is filled in.** Each user has their own department, set by an admin under **Admin → Users → Department** (or when adding the user). Every item you scan or pick starts on it.
+- **Change it per item.** Each item in the cart has its own *Charge to* dropdown, for picking up for someone in another department. Scanning the same item again adds to the line still on your department, so one vest for Parks and one for your own crew stay on separate lines. Moving a line onto a department that already has that item joins the two.
+- **No department set.** If your account has no department (or it was deactivated), an orange note says so, each item starts on *Choose a department*, and Confirm stays off until every item has one.
+- **Test mode** fills in Test Department instead.
+- **The old employees.** The Employees screen and the employee search are gone, and nobody can add employees any more. Nothing was deleted: the `apparel.employees` table and the names on check outs recorded before 2026-11-18 are still in the database, unused by the app. The notes field is still there for anything worth recording, and it now shows in recent activity.
+
+Setup, once, in this order:
+
+1. Run `supabase/migrations/20261118120000_checkout_by_department.sql` in the SQL Editor.
+2. Deploy the user-management function, which now saves each user's department:
+
+   ```bash
+   supabase functions deploy admin-users --no-verify-jwt
+   ```
+
+3. Push `index.html` to `main`.
+4. Under **Admin → Users**, give everyone a department with the **Department** button, yourself included.
+
 ## Day to day
 
-- **Check out** — scan labels (or pick from the list), choose the employee, confirm the department, confirm. The employee's home department is preselected but can be changed.
+- **Check out** — scan labels (or pick from the list), set quantities, confirm. Each item is charged to your own department unless you pick another in its *Charge to* dropdown.
 - **Receive** — read a packing slip to add what arrived, and read the invoice when it comes to set costs. *Receive one item* is there for anything else; entering a unit cost there also updates the item's current cost, which future checkouts are charged at.
 - **Inventory** — on-hand counts with low-stock items flagged first. Admins can adjust counts after a physical check and undo mistaken transactions.
 - **Reports** — chargebacks by department for any date range, including vendor set-up fees under department 10, with CSV download.

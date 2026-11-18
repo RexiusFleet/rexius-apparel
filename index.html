@@ -225,6 +225,10 @@ tr.low td { background: var(--orange-soft); }
 .qty button { width: 44px; height: 44px; border: 0; background: var(--panel); color: var(--ink); font-size: 22px; font-weight: 600; }
 .qty input { width: 52px; height: 44px; border: 0; border-left: 1.5px solid var(--btn-border); border-right: 1.5px solid var(--btn-border); background: var(--panel); text-align: center; font-size: 18px; font-weight: 600; }
 .cart-line .remove { background: none; border: 0; color: var(--danger-text); font-size: 14px; padding: 4px; }
+.cart-line .line-dept { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.cart-line .line-dept label { font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.cart-line .line-dept select { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 6px 10px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); }
+.cart-line .line-dept select.unset { border-color: var(--orange); }
 .picklist { max-height: 260px; overflow-y: auto; border: 1.5px solid var(--line); border-radius: var(--radius); }
 .picklist button { display: block; width: 100%; text-align: left; background: var(--panel); color: var(--ink); border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; min-height: var(--tap); }
 .picklist button:last-child { border-bottom: 0; }
@@ -363,7 +367,7 @@ tr.low td { background: var(--orange-soft); }
   <main>
     <!-- ---------- CHECKOUT ---------- -->
     <section class="view active" id="view-checkout">
-      <div class="view-head"><h2>Check out apparel</h2><span class="sub">Scan each item, then say who it's for.</span></div>
+      <div class="view-head"><h2>Check out apparel</h2><span class="sub">Scan each item, then confirm. It's charged to your department unless you pick another.</span></div>
 
       <div class="panel">
         <div id="scanArea" style="display:none">
@@ -384,15 +388,11 @@ tr.low td { background: var(--orange-soft); }
 
       <div class="panel" id="cartPanel">
         <h3>Items</h3>
+        <p class="callout" id="deptHint" style="display:none"></p>
         <div id="cartLines"><div class="empty">Nothing scanned yet.</div></div>
       </div>
 
       <div class="panel">
-        <h3>Who is this for?</h3>
-        <div class="field"><label for="empSearch">Employee</label><input id="empSearch" placeholder="Start typing a name" autocomplete="off"></div>
-        <div class="picklist" id="empList" style="display:none"></div>
-        <div id="empChosen" class="hint" style="margin:-6px 0 12px"></div>
-        <div class="field"><label for="deptSelect">Charge to department</label><select id="deptSelect"></select></div>
         <div class="field"><label for="coNotes">Notes (optional)</label><input id="coNotes" placeholder="e.g. replacement for torn vest"></div>
         <div class="summary"><span id="cartCount">0 items</span><span id="cartValue">$0.00</span></div>
         <button class="btn primary big block" id="confirmCheckoutBtn" disabled>Confirm checkout</button>
@@ -468,7 +468,7 @@ tr.low td { background: var(--orange-soft); }
       </div>
       <div class="panel quiet">
         <h3>Recent activity</h3>
-        <div class="table-wrap"><table id="actTable"><thead><tr><th>When</th><th>What</th><th>Item</th><th class="num">Qty</th><th>Employee / Dept</th><th>By</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table id="actTable"><thead><tr><th>When</th><th>What</th><th>Item</th><th class="num">Qty</th><th>Details</th><th>By</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
     </section>
 
@@ -494,7 +494,6 @@ tr.low td { background: var(--orange-soft); }
         <button data-sub="items" class="active">Items</button>
         <button data-sub="labels">Print labels</button>
         <button data-sub="departments">Departments</button>
-        <button data-sub="employees">Employees</button>
         <button data-sub="invoices">Documents</button>
         <button data-sub="users">Users</button>
         <button data-sub="test">Test mode</button>
@@ -524,21 +523,6 @@ tr.low td { background: var(--orange-soft); }
           </div>
         </div>
         <div class="panel quiet"><div class="table-wrap"><table id="deptTable"><thead><tr><th>Department</th><th>Code</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div></div>
-      </div>
-
-      <div class="subview" id="sub-employees">
-        <div class="panel">
-          <h3>Add an employee</h3>
-          <div class="row">
-            <div class="field"><label for="empName">Full name</label><input id="empName"></div>
-            <div class="field"><label for="empDept">Home department</label><select id="empDept"></select></div>
-            <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn primary" id="addEmpBtn">Add employee</button></div>
-          </div>
-        </div>
-        <div class="panel quiet">
-          <div class="field"><label for="empAdminSearch">Search</label><input id="empAdminSearch" autocomplete="off"></div>
-          <div class="table-wrap"><table id="empTable"><thead><tr><th>Name</th><th>Department</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
-        </div>
       </div>
 
       <div class="subview" id="sub-invoices">
@@ -581,26 +565,27 @@ tr.low td { background: var(--orange-soft); }
             <div class="field"><label for="userEmail">Email</label><input id="userEmail" type="email" autocomplete="off" inputmode="email"></div>
             <div class="field"><label for="userName">Display name</label><input id="userName" autocomplete="off" placeholder="Shown in the activity log"></div>
             <div class="field narrow"><label for="userRole">Role</label><select id="userRole"><option value="checkout">Checkout</option><option value="admin">Admin</option></select></div>
+            <div class="field"><label for="userDept">Department</label><select id="userDept"></select></div>
           </div>
           <div class="row">
             <div class="field"><label for="userPass">Temporary password</label><div class="pw-row"><input id="userPass" type="text" autocomplete="off" spellcheck="false" placeholder="At least 8 characters"><button class="btn small" type="button" id="genPassBtn">Generate</button></div></div>
             <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn primary" id="addUserBtn">Add user</button></div>
           </div>
-          <p class="hint">Checkout users can scan items out to employees (adding a new employee on the spot if needed) and see what's in stock. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, employees, vendor invoices and users. Active admins also get an email when an item drops to its reorder point.</p>
+          <p class="hint">Checkout users can scan items out and see what's in stock. Everything they check out is charged to their department unless they pick another for an item. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, vendor invoices and users. Active admins also get an email when an item drops to its reorder point.</p>
         </div>
         <div class="panel quiet">
           <div class="view-head" style="margin-bottom:8px"><h3>App users</h3><button class="btn small" id="refreshUsersBtn">Refresh</button></div>
-          <div class="table-wrap"><table id="userTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table id="userTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody><tr><td colspan="7" class="empty">Loading…</td></tr></tbody></table></div>
         </div>
       </div>
 
       <div class="subview" id="sub-test">
         <div class="panel">
           <h3>Test mode</h3>
-          <p class="hint">Test items, employees and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers or real people. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab. Checking a test item out down to its reorder point emails a [TEST] low-stock alert to you only.</p>
+          <p class="hint">Test items and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers. Check outs are charged to the test department. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab. Checking a test item out down to its reorder point emails a [TEST] low-stock alert to you only.</p>
           <p class="hint" id="testSummary"></p>
           <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-packing-slip.pdf" download="test-packing-slip.pdf">Sample packing slip</a><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample invoice</a></div>
-          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items, employees and departments are kept for next time.</p>
+          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items and departments are kept for next time.</p>
         </div>
       </div>
     </section>
@@ -628,8 +613,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema
    ========================================================= */
 const S = {
   session: null, me: null, role: null,
-  items: [], inventory: [], departments: [], employees: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
-  cart: [], cartEmployee: null, rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },
+  items: [], inventory: [], departments: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
+  cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
   report: null, testMode: false, testIds: new Set()
 };
 const $ = (id) => document.getElementById(id);
@@ -638,7 +623,9 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const itemLabel = (it) => `${it.name}${it.size ? " – " + it.size : ""}`;
 const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const isAdmin = () => S.role === "admin";
-// Test records (is_test on items, employees, departments and invoices) show only in test mode, and in test mode nothing else does. The Admin lists show both.
+// Display name of the app user who recorded something, for activity and reports ("" when unknown).
+const userName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid && uid === S.session?.user.id ? S.me?.display_name || "you" : "");
+// Test records (is_test on items, departments and invoices) show only in test mode, and in test mode nothing else does. The Admin lists show both.
 const inScope = (itemId) => S.testIds.has(itemId) === S.testMode;   // by id, because inventory rows don't carry the flag
 const rowInScope = (row) => !!row.is_test === S.testMode;
 const TEST_MODE_KEY = "apparel.testMode";
@@ -710,18 +697,17 @@ async function boot() {
    DATA LOADING
    ========================================================= */
 async function loadRefs() {
-  const [it, inv, dp, em] = await Promise.all([
+  const [it, inv, dp] = await Promise.all([
     sb.from("items").select("*").order("name").order("size"),
     sb.from("inventory").select("*").order("name").order("size"),
-    sb.from("departments").select("*").order("name"),
-    sb.from("employees").select("*, department:departments(name)").order("full_name")
+    sb.from("departments").select("*").order("name")
   ]);
-  for (const r of [it, inv, dp, em]) if (r.error) return fail(r.error, "Couldn't load data");
-  S.items = it.data; S.inventory = inv.data; S.departments = dp.data; S.employees = em.data;
+  for (const r of [it, inv, dp]) if (r.error) return fail(r.error, "Couldn't load data");
+  S.items = it.data; S.inventory = inv.data; S.departments = dp.data;
   S.testIds = new Set(S.items.filter((i) => i.is_test).map((i) => i.id));
   await loadUserNames();
-  renderTestMode(); renderDeptSelects(); renderInventory(); updateLowBadge(); renderCart();
-  if (isAdmin()) { renderAdminItems(); renderDepts(); renderEmployees(); renderLabelPicker(); await loadInvoices(); await loadAliases(); }
+  renderTestMode(); renderUserDeptSelect(); renderInventory(); updateLowBadge(); renderCart();
+  if (isAdmin()) { renderAdminItems(); renderDepts(); renderLabelPicker(); if (S.adminUsers.length) renderUsers(); await loadInvoices(); await loadAliases(); }
 }
 async function refreshInventory() {
   const { data, error } = await sb.from("inventory").select("*").order("name").order("size");
@@ -752,7 +738,7 @@ async function showView(name) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "inventory") { await refreshInventory(); loadActivity(); }
   if (name === "reports") { populateReportDepts(); if (!$("repFrom").value) setRange("month"); }
-  if (name === "admin" && isAdmin()) { renderAdminItems(); renderDepts(); renderEmployees(); renderLabelPicker(); loadUsers(); loadInvoices(); loadAliases(); }
+  if (name === "admin" && isAdmin()) { renderAdminItems(); renderDepts(); renderLabelPicker(); loadUsers(); loadInvoices(); loadAliases(); }
   window.scrollTo(0, 0);
 }
 $("adminNav").addEventListener("click", (e) => {
@@ -816,22 +802,34 @@ function onScan(code) {
   if (navigator.vibrate) navigator.vibrate(60);
   addToCart(it);
 }
+// Each cart line is charged to its own department. A new line starts on your department
+// (set by an admin under Admin → Users); in test mode, on the test department.
+const checkoutDepts = () => S.departments.filter((d) => d.active && rowInScope(d));
+function defaultDeptId() {
+  const usable = checkoutDepts(), mine = S.me?.department_id;
+  if (mine && usable.some((d) => d.id === mine)) return mine;
+  return S.testMode && usable.length ? usable[0].id : "";
+}
 function addToCart(it) {
-  const line = S.cart.find((l) => l.item.id === it.id);
-  if (line) line.qty += 1; else S.cart.push({ item: it, qty: 1 });
+  const dept = defaultDeptId();
+  const line = S.cart.find((l) => l.item.id === it.id && l.dept === dept);   // a line moved to another department is left alone
+  if (line) line.qty += 1; else S.cart.push({ item: it, qty: 1, dept });
   toast(`Added ${itemLabel(it)}`);
   renderCart();
 }
 function renderCart() {
-  const el = $("cartLines");
+  const el = $("cartLines"), depts = checkoutDepts(), usable = new Set(depts.map((d) => d.id));
+  S.cart.forEach((l) => { if (l.dept && !usable.has(l.dept)) l.dept = ""; });   // its department was deactivated meanwhile
+  const deptOpts = (cur) => `<option value="">Choose a department</option>` + depts.map((d) => `<option value="${d.id}"${d.id === cur ? " selected" : ""}>${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}</option>`).join("");
   if (!S.cart.length) { el.innerHTML = `<div class="empty">Nothing scanned yet.</div>`; }
   else {
     el.innerHTML = "";
     S.cart.forEach((l, idx) => {
-      const oh = onHandOf(l.item.id);
+      const oh = onHandOf(l.item.id), wanted = S.cart.reduce((a, x) => a + (x.item.id === l.item.id ? x.qty : 0), 0);   // across every line of this item
       const d = document.createElement("div"); d.className = "cart-line";
-      d.innerHTML = `<div><div class="name">${esc(itemLabel(l.item))}</div><div class="meta">${esc(l.item.sku)} · ${money(l.item.unit_cost)} each · ${oh} on hand${l.qty > oh ? ' · <span style="color:var(--orange);font-weight:600">more than on hand</span>' : ""}</div><button class="remove" data-i="${idx}">Remove</button></div>
-        <div class="qty"><button data-i="${idx}" data-d="-1" aria-label="Less">−</button><input type="number" min="1" value="${l.qty}" data-i="${idx}" inputmode="numeric"><button data-i="${idx}" data-d="1" aria-label="More">+</button></div>`;
+      d.innerHTML = `<div><div class="name">${esc(itemLabel(l.item))}</div><div class="meta">${esc(l.item.sku)} · ${money(l.item.unit_cost)} each · ${oh} on hand${wanted > oh ? ' · <span style="color:var(--orange);font-weight:600">more than on hand</span>' : ""}</div><button class="remove" data-i="${idx}">Remove</button></div>
+        <div class="qty"><button data-i="${idx}" data-d="-1" aria-label="Less">−</button><input type="number" min="1" value="${l.qty}" data-i="${idx}" inputmode="numeric" aria-label="Quantity"><button data-i="${idx}" data-d="1" aria-label="More">+</button></div>
+        <div class="line-dept"><label for="lineDept${idx}">Charge to</label><select id="lineDept${idx}" data-i="${idx}"${l.dept ? "" : ' class="unset"'}>${deptOpts(l.dept)}</select></div>`;
       el.appendChild(d);
     });
   }
@@ -839,7 +837,17 @@ function renderCart() {
   const value = S.cart.reduce((a, l) => a + l.qty * Number(l.item.unit_cost || 0), 0);
   $("cartCount").textContent = `${count} item${count === 1 ? "" : "s"}`;
   $("cartValue").textContent = money(value);
-  $("confirmCheckoutBtn").disabled = !(S.cart.length && S.cartEmployee && $("deptSelect").value);
+  $("confirmCheckoutBtn").disabled = !(S.cart.length && S.cart.every((l) => l.dept));
+  renderDeptHint();
+}
+// Shown when there's no department to fill in, so each item needs one chosen.
+function renderDeptHint() {
+  const el = $("deptHint"), missing = !defaultDeptId();
+  el.style.display = missing ? "" : "none";
+  if (!missing) return;
+  const mine = S.departments.find((d) => d.id === S.me?.department_id);
+  el.textContent = S.testMode ? "There's no active test department. Add one under Admin → Departments while test mode is on."
+    : `${mine ? `Your department, ${mine.name}, is inactive` : "Your account doesn't have a department yet"}, so choose one for each item. ${isAdmin() ? "Set yours under Admin → Users" : "An admin can set it under Admin → Users"}, and it will be filled in from then on.`;
 }
 $("cartLines").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -849,77 +857,40 @@ $("cartLines").addEventListener("click", (e) => {
   renderCart();
 });
 $("cartLines").addEventListener("change", (e) => {
+  const i = Number(e.target.dataset.i);
+  if (e.target.tagName === "SELECT") return setLineDept(i, e.target.value);
   if (e.target.tagName !== "INPUT") return;
-  const i = Number(e.target.dataset.i); S.cart[i].qty = Math.max(1, parseInt(e.target.value) || 1); renderCart();
+  S.cart[i].qty = Math.max(1, parseInt(e.target.value) || 1); renderCart();
 });
-
-// employee picker
-function filterEmployees(q) {
-  q = q.trim().toLowerCase();
-  return S.employees.filter((e) => e.active && rowInScope(e) && (!q || e.full_name.toLowerCase().includes(q)));
-}
-$("empSearch").addEventListener("input", (e) => {
-  const list = filterEmployees(e.target.value).slice(0, 40);
-  const el = $("empList"); el.style.display = ""; el.innerHTML = list.length ? "" : `<div class="empty">No matching employees.</div>`;
-  list.forEach((emp) => {
-    const b = document.createElement("button"); b.type = "button";
-    b.innerHTML = `<div>${esc(emp.full_name)}</div><div class="meta">${emp.department ? esc(emp.department.name) : ""}</div>`;
-    b.addEventListener("click", () => chooseEmployee(emp)); el.appendChild(b);
-  });
-  const q = e.target.value.trim();
-  if (q.length >= 2) {
-    const add = document.createElement("button"); add.type = "button"; add.style.color = "var(--green-text)"; add.style.fontWeight = "600";
-    add.innerHTML = `＋ Add “${esc(q)}” as a new employee`;
-    add.addEventListener("click", () => openQuickAddEmployee(q)); el.appendChild(add);
-  }
-});
-function openQuickAddEmployee(name) {
-  const deptOpts = S.departments.filter((d) => d.active && rowInScope(d)).map((d) => `<option value="${d.id}" ${d.id === $("deptSelect").value ? "selected" : ""}>${esc(d.name)}</option>`).join("");
-  openModal(`<h2>New employee</h2><p class="hint">Check the list first — if they're already in it under a slightly different name, pick that instead so their history stays in one place.</p>
-    <div class="field"><label for="qName">Full name</label><input id="qName" value="${esc(name)}"></div>
-    <div class="field"><label for="qDept">Home department</label><select id="qDept"><option value="">Choose</option>${deptOpts}</select></div>
-    <div class="btn-row"><button class="btn primary" id="qSave">Add and select</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
-  $("qName").focus();
-  $("qSave").addEventListener("click", async () => {
-    const full_name = $("qName").value.trim(), department_id = $("qDept").value || null;
-    if (!full_name) return toast("A name is required.", true);
-    const dupe = S.employees.find((x) => rowInScope(x) && x.full_name.trim().toLowerCase() === full_name.toLowerCase());
-    if (dupe) { closeModal(); chooseEmployee(dupe); return toast(`${dupe.full_name} is already in the list — selected them.`); }
-    const row = { full_name, department_id }; if (S.testMode) row.is_test = true;
-    const { data, error } = await sb.from("employees").insert(row).select("*, department:departments(name)").single();
-    if (error) return fail(error, error.code === "42501" ? "Adding employees isn't enabled yet (run the policy SQL)" : "Couldn't add employee");
-    S.employees.push(data); S.employees.sort((a, b) => a.full_name.localeCompare(b.full_name));
-    closeModal(); chooseEmployee(data); toast(`Added ${full_name}`);
-    if (isAdmin()) renderEmployees();
-  });
-}
-function chooseEmployee(emp) {
-  S.cartEmployee = emp;
-  $("empSearch").value = emp.full_name; $("empList").style.display = "none";
-  $("empChosen").textContent = `Selected: ${emp.full_name}${emp.department ? " · " + emp.department.name : ""}`;
-  if (emp.department_id) $("deptSelect").value = emp.department_id;
+// Moving a line to a department that already has the same item joins the two lines.
+function setLineDept(i, dept) {
+  const line = S.cart[i], twin = S.cart.find((l) => l !== line && l.item.id === line.item.id && l.dept === dept);
+  if (twin) { twin.qty += line.qty; S.cart.splice(i, 1); } else line.dept = dept;
   renderCart();
 }
-$("deptSelect").addEventListener("change", renderCart);
 
-function renderDeptSelects() {
-  const opts = (blank) => (blank ? `<option value="">${blank}</option>` : "") + S.departments.filter((d) => d.active && rowInScope(d)).map((d) => `<option value="${d.id}">${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}</option>`).join("");
-  $("deptSelect").innerHTML = opts("Choose a department");
-  $("empDept").innerHTML = opts("None");
+// The department choices on Admin → Users: real, active departments.
+function renderUserDeptSelect() {
+  const sel = $("userDept"), cur = sel.value;
+  sel.innerHTML = `<option value="">None</option>` + S.departments.filter((d) => d.active && !d.is_test).map((d) => `<option value="${d.id}">${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}</option>`).join("");
+  sel.value = cur; if (sel.selectedIndex < 0) sel.value = "";
 }
 
 $("confirmCheckoutBtn").addEventListener("click", async () => {
+  if (!S.cart.length) return;
+  if (S.cart.some((l) => !l.dept)) return toast("Choose a department for every item.", true);
   const btn = $("confirmCheckoutBtn"); btn.disabled = true;
   const rows = S.cart.map((l) => ({
     type: "checkout", item_id: l.item.id, qty_change: -l.qty, unit_cost: l.item.unit_cost,
-    department_id: $("deptSelect").value, employee_id: S.cartEmployee.id, performed_by: S.session.user.id,
+    department_id: l.dept, performed_by: S.session.user.id,
     notes: $("coNotes").value.trim() || null
   }));
   const { error } = await sb.from("transactions").insert(rows);
   if (error) { btn.disabled = false; return fail(error, "Checkout failed"); }
-  const n = S.cart.reduce((a, l) => a + l.qty, 0);
-  toast(`Checked out ${n} item${n === 1 ? "" : "s"} to ${S.cartEmployee.full_name}`);
-  S.cart = []; S.cartEmployee = null; $("empSearch").value = ""; $("empChosen").textContent = ""; $("coNotes").value = ""; $("deptSelect").value = "";
+  const n = S.cart.reduce((a, l) => a + l.qty, 0), depts = [...new Set(S.cart.map((l) => l.dept))];
+  const to = depts.length === 1 ? (S.departments.find((d) => d.id === depts[0]) || {}).name || "1 department" : `${depts.length} departments`;
+  toast(`Checked out ${n} item${n === 1 ? "" : "s"} to ${to}`);
+  S.cart = []; $("coNotes").value = "";
   await refreshInventory(); renderCart(); window.scrollTo(0, 0);
 });
 
@@ -1666,8 +1637,8 @@ function codingReportHtml(d) {
     const extra = [Number(r.setup_fees) && g.code === SETUP_FEE_DEPT_CODE ? `<tr><td></td><td></td><td>Vendor set-up fees on this invoice</td><td class="num"></td><td class="num"></td><td class="num">${money(r.setup_fees)}</td></tr>` : "",
       Number(r.gap) && g.code === SETUP_FEE_DEPT_CODE ? `<tr><td></td><td></td><td>Balance to invoice total</td><td class="num"></td><td class="num"></td><td class="num">${money(r.gap)}</td></tr>` : ""].join("");
     return `<h3>Dept ${esc(g.code)} <span class="rep-total">${money(g.amount)}</span></h3>
-      <table><thead><tr><th>Date</th><th>Employee</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>
-      ${ls.map((l) => `<tr><td>${day(l.date)}</td><td>${esc(l.employee || "")}</td><td>${esc(itemLabel({ name: l.item, size: l.size }))}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.amount)}</td></tr>`).join("")}${extra}</tbody></table>`;
+      <table><thead><tr><th>Date</th><th>Checked out by</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>
+      ${ls.map((l) => `<tr><td>${day(l.date)}</td><td>${esc(l.checked_out_by || "")}</td><td>${esc(itemLabel({ name: l.item, size: l.size }))}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.amount)}</td></tr>`).join("")}${extra}</tbody></table>`;
   }).join("");
   return `<div class="coding-report">
     <h2>Invoice coding report${r.is_test ? " (TEST)" : ""}</h2>
@@ -1709,8 +1680,8 @@ function downloadCodingCsv(d) {
   const r = d.report, v = d.invoice, { codeOf } = codingSummary(d);
   const cell = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
   const head = [v.invoice_no || "", v.vendor, v.invoice_date || ""];
-  const lines = [["Invoice no.", "Vendor", "Invoice date", "Dept code", "Type", "Date", "Employee", "Item", "Size", "Qty", "Unit cost", "Amount"].map(cell).join(",")];
-  d.lines.forEach((l) => lines.push([...head, codeOf(l), "Check out", new Date(l.date).toLocaleDateString(), l.employee, l.item, l.size, l.qty, Number(l.unit_cost).toFixed(2), Number(l.amount).toFixed(2)].map(cell).join(",")));
+  const lines = [["Invoice no.", "Vendor", "Invoice date", "Dept code", "Type", "Date", "Checked out by", "Item", "Size", "Qty", "Unit cost", "Amount"].map(cell).join(",")];
+  d.lines.forEach((l) => lines.push([...head, codeOf(l), "Check out", new Date(l.date).toLocaleDateString(), l.checked_out_by, l.item, l.size, l.qty, Number(l.unit_cost).toFixed(2), Number(l.amount).toFixed(2)].map(cell).join(",")));
   const extra = (code, type, amount) => { if (Number(amount)) lines.push([...head, code, type, "", "", "", "", "", "", Number(amount).toFixed(2)].map(cell).join(",")); };
   extra(SETUP_FEE_DEPT_CODE, "Set-up fees", r.setup_fees); extra(SETUP_FEE_DEPT_CODE, "Balance to invoice total", r.gap); extra("Stock Up", "Stock Up", r.stock_up);
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1762,17 +1733,16 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, report_id, item:items(name,size,sku), department:departments(name), employee:employees(full_name), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, invoice_id, report_id, item:items(name,size,sku), department:departments(name), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
-  const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || (uid === S.session.user.id ? (S.me.display_name || "you") : "—");
   const tb = $("actTable").querySelector("tbody");
   tb.innerHTML = data.length ? data.map((t) => {
     const what = { checkout: "Checked out", receive: "Received", adjust: "Adjusted" }[t.type];
     const inv = t.invoice && isAdmin() ? `<div class="meta sub"><button class="linkish" data-inv="${t.invoice_id}">${esc(docLabel(t.invoice))}</button></div>` : "";
-    const who = t.type === "checkout" ? `${esc(t.employee?.full_name || "")}<div class="meta sub">${esc(t.department?.name || "")}</div>` : esc(t.notes || "") + inv;
-    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${who}</td><td>${esc(byName(t.performed_by))}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
+    const details = t.type === "checkout" ? esc(t.department?.name || "") + (t.notes ? `<div class="meta sub">${esc(t.notes)}</div>` : "") : esc(t.notes || "") + inv;
+    return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${details}</td><td>${esc(userName(t.performed_by) || "—")}</td><td class="actions">${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
 }
 $("actTable").addEventListener("click", async (e) => {
@@ -1814,7 +1784,7 @@ async function runReport() {
   const from = $("repFrom").value, to = $("repTo").value;
   if (!from || !to) return toast("Choose both dates.", true);
   const start = new Date(from + "T00:00:00"), end = new Date(to + "T00:00:00"); end.setDate(end.getDate() + 1);
-  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, item:items(name,size,sku,category), department:departments(id,name,code), employee:employees(full_name)")
+  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, item:items(name,size,sku,category), department:departments(id,name,code)")
     .eq("type", "checkout").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at");
   const deptFilter = $("repDept").value;
   if (deptFilter) q = q.eq("department_id", deptFilter);
@@ -1848,8 +1818,8 @@ async function runReport() {
   Object.values(groups).sort((a, b) => b.total - a.total).forEach((g) => {
     html += `<div class="group panel quiet"><div class="group-head"><h3>${esc(g.dept?.name || "No department")}${g.dept?.code && !g.dept.missing ? ` <span class="sub">(${esc(g.dept.code)})</span>` : ""}</h3><span class="total">${money(g.total)}</span></div>
       ${g.dept?.missing ? `<p class="hint">No department has code ${SETUP_FEE_DEPT_CODE} yet. Add it under Admin, Departments, and these set-up fees will show under it.</p>` : ""}
-      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>`;
-    g.rows.forEach((t) => { html += `<tr><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${esc(t.employee?.full_name || "")}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${-t.qty_change}</td><td class="num">${money(t.unit_cost)}</td><td class="num">${money(-t.qty_change * Number(t.unit_cost || 0))}</td></tr>`; });
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Checked out by</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>`;
+    g.rows.forEach((t) => { html += `<tr><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${esc(userName(t.performed_by))}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${-t.qty_change}</td><td class="num">${money(t.unit_cost)}</td><td class="num">${money(-t.qty_change * Number(t.unit_cost || 0))}</td></tr>`; });
     g.fees.forEach((f) => { html += `<tr><td>${new Date(f.date + "T00:00:00").toLocaleDateString()}</td><td></td><td>Set-up fees: ${esc(f.vendor)}${f.invoice_no ? " invoice " + esc(f.invoice_no) : ""}</td><td class="num"></td><td class="num"></td><td class="num">${money(f.setup_fees)}</td></tr>`; });
     html += `</tbody></table></div></div>`;
   });
@@ -1857,12 +1827,11 @@ async function runReport() {
 }
 $("csvBtn").addEventListener("click", () => {
   if (!S.report) return;
-  const byName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display_name || "";
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [["Date", "Department", "Dept code", "Employee", "Item", "Size", "SKU", "Category", "Qty", "Unit cost", "Total", "Checked out by", "Notes"].map(cell).join(",")];
-  S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.name, t.department?.code, t.employee?.full_name, t.item?.name, t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), byName(t.performed_by), t.notes].map(cell).join(",")));
+  const lines = [["Date", "Department", "Dept code", "Item", "Size", "SKU", "Category", "Qty", "Unit cost", "Total", "Checked out by", "Notes"].map(cell).join(",")];
+  S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.name, t.department?.code, t.item?.name, t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), userName(t.performed_by), t.notes].map(cell).join(",")));
   const d = S.report.feeDept;
-  S.report.fees.forEach((f) => lines.push([new Date(f.date + "T00:00:00").toLocaleDateString(), d?.name || `Department ${SETUP_FEE_DEPT_CODE}`, d?.code || SETUP_FEE_DEPT_CODE, "", "Vendor set-up fees", "", "", "Set-up", "", "", Number(f.setup_fees).toFixed(2), "", `${f.vendor}${f.invoice_no ? " invoice " + f.invoice_no : ""}`].map(cell).join(",")));
+  S.report.fees.forEach((f) => lines.push([new Date(f.date + "T00:00:00").toLocaleDateString(), d?.name || `Department ${SETUP_FEE_DEPT_CODE}`, d?.code || SETUP_FEE_DEPT_CODE, "Vendor set-up fees", "", "", "Set-up", "", "", Number(f.setup_fees).toFixed(2), "", `${f.vendor}${f.invoice_no ? " invoice " + f.invoice_no : ""}`].map(cell).join(",")));
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${S.report.test ? "TEST-" : ""}apparel-chargebacks-${S.report.from}-to-${S.report.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
 });
@@ -1878,8 +1847,7 @@ async function countRefs(table, col, id) {
 async function deleteRecord(kind, id) {
   const cfg = {
     item:       { table: "items",       label: () => itemLabel(S.items.find((x) => x.id === id)), refs: [["transactions", "item_id", "transaction"]] },
-    department: { table: "departments", label: () => S.departments.find((x) => x.id === id).name, refs: [["transactions", "department_id", "transaction"], ["employees", "department_id", "employee"]] },
-    employee:   { table: "employees",   label: () => S.employees.find((x) => x.id === id).full_name, refs: [["transactions", "employee_id", "transaction"]] }
+    department: { table: "departments", label: () => S.departments.find((x) => x.id === id).name, refs: [["transactions", "department_id", "transaction"]] }
   }[kind];
   try {
     for (const [table, col, what] of cfg.refs) {
@@ -1889,13 +1857,14 @@ async function deleteRecord(kind, id) {
   } catch (e) { return fail(e, "Couldn't check history"); }
   if (!confirm(`Delete ${cfg.label()} permanently? It has no history, so nothing else is affected.`)) return;
   const { error } = await sb.from(cfg.table).delete().eq("id", id);
-  if (error) return fail(error, "Couldn't delete");
+  // 23503: an older record still points to it, such as an employee from before check outs went by department.
+  if (error) return error.code === "23503" ? toast(`Can't delete ${cfg.label()}: older records still point to it. Leave it deactivated.`, true) : fail(error, "Couldn't delete");
   toast("Deleted"); await loadRefs();
 }
 
 /* =========================================================
    TEST MODE (admin only)
-   Test items, employees, departments and invoices are kept apart from
+   Test items, departments and invoices are kept apart from
    real ones: in test mode every screen shows only them, and outside it
    they are hidden. Anything added while test mode is on is a test record.
    ========================================================= */
@@ -1904,16 +1873,15 @@ function renderTestMode() {
   $("aiTestHint").style.display = S.testMode ? "" : "none";
   $("testToggleBtn").textContent = S.testMode ? "Turn off test mode" : "Turn on test mode";
   const items = [...new Set(S.items.filter((i) => S.testIds.has(i.id)).map((i) => i.name))];
-  const emps = S.employees.filter((e) => e.is_test).map((e) => e.full_name), depts = S.departments.filter((d) => d.is_test).map((d) => d.name);
-  $("testSummary").textContent = `Test items: ${items.length ? `${items.join(", ")} (${S.testIds.size} in all)` : "none yet"}. Test employees: ${emps.join(", ") || "none yet"}. Test departments: ${depts.join(", ") || "none yet"}.`;
+  const depts = S.departments.filter((d) => d.is_test).map((d) => d.name);
+  $("testSummary").textContent = `Test items: ${items.length ? `${items.join(", ")} (${S.testIds.size} in all)` : "none yet"}. Test departments: ${depts.join(", ") || "none yet"}.`;
 }
 async function setTestMode(on) {
   S.testMode = on && isAdmin();
   try { if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
-  // Nothing carries over, so a cart, chosen employee, half-done receive or report from one side can't be finished on the other.
-  S.cart = []; S.cartEmployee = null; S.rcvItem = null; S.ai = null; S.report = null;
-  $("pickArea").style.display = "none"; $("rcvList").style.display = "none"; $("empList").style.display = "none";
-  $("empSearch").value = ""; $("empChosen").textContent = "";
+  // Nothing carries over, so a cart, half-done receive or report from one side can't be finished on the other.
+  S.cart = []; S.rcvItem = null; S.ai = null; S.report = null;
+  $("pickArea").style.display = "none"; $("rcvList").style.display = "none";
   $("rcvSearch").value = ""; $("rcvChosen").textContent = ""; $("rcvCost").value = ""; $("confirmReceiveBtn").disabled = true;
   $("aiReview").style.display = "none"; $("aiReview").innerHTML = "";
   $("reportOut").innerHTML = `<div class="empty">Choose a date range and run the report.</div>`; $("csvBtn").disabled = true;
@@ -2060,40 +2028,6 @@ $("deptTable").addEventListener("click", async (e) => {
 });
 
 /* =========================================================
-   ADMIN: EMPLOYEES
-   ========================================================= */
-$("empAdminSearch").addEventListener("input", renderEmployees);
-function renderEmployees() {
-  const q = $("empAdminSearch").value.trim().toLowerCase();
-  const rows = S.employees.filter((e) => !q || `${e.full_name} ${e.department?.name || ""}`.toLowerCase().includes(q));
-  const tb = $("empTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((e) => `<tr><td>${esc(e.full_name)}</td><td>${esc(e.department?.name || "")}</td><td><span class="pill ${e.active ? "ok" : "off"}">${e.active ? "Active" : "Inactive"}</span>${e.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-eedit="${e.id}">Edit</button><button class="btn small" data-etoggle="${e.id}">${e.active ? "Deactivate" : "Reactivate"}</button>${e.active ? "" : `<button class="btn small danger" data-edelete="${e.id}">Delete</button>`}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">${S.employees.length ? "No matches." : "No employees yet."}</td></tr>`;
-}
-$("addEmpBtn").addEventListener("click", async () => {
-  const full_name = $("empName").value.trim(); if (!full_name) return toast("Enter the employee's name.", true);
-  const row = { full_name, department_id: $("empDept").value || null }; if (S.testMode) row.is_test = true;
-  const { error } = await sb.from("employees").insert(row);
-  if (error) return fail(error, "Couldn't add employee");
-  $("empName").value = ""; toast(S.testMode ? "Test employee added" : "Employee added"); await loadRefs(); $("empName").focus();
-});
-$("empTable").addEventListener("click", async (e) => {
-  const ed = e.target.closest("[data-eedit]"), tg = e.target.closest("[data-etoggle]"), dl = e.target.closest("[data-edelete]");
-  if (dl) return deleteRecord("employee", dl.dataset.edelete);
-  if (tg) { const emp = S.employees.find((x) => x.id === tg.dataset.etoggle); const { error } = await sb.from("employees").update({ active: !emp.active }).eq("id", emp.id); if (error) return fail(error, "Couldn't update"); await loadRefs(); }
-  if (ed) {
-    const emp = S.employees.find((x) => x.id === ed.dataset.eedit);
-    openModal(`<h2>Edit employee</h2>
-      <div class="field"><label for="eName">Full name</label><input id="eName" value="${esc(emp.full_name)}"></div>
-      <div class="field"><label for="eDept">Home department</label><select id="eDept"><option value="">None</option>${S.departments.filter((d) => (d.active || d.id === emp.department_id) && !!d.is_test === !!emp.is_test).map((d) => `<option value="${d.id}" ${d.id === emp.department_id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>
-      <div class="btn-row"><button class="btn primary" id="eSave">Save changes</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
-    $("eSave").addEventListener("click", async () => {
-      const { error } = await sb.from("employees").update({ full_name: $("eName").value.trim(), department_id: $("eDept").value || null }).eq("id", emp.id);
-      if (error) return fail(error, "Couldn't save"); closeModal(); toast("Employee saved"); await loadRefs();
-    });
-  }
-});
-
-/* =========================================================
    ADMIN: USERS (via the admin-users Edge Function)
    The page never holds the service-role key: every change goes through
    supabase/functions/admin-users, which re-checks that the caller is an
@@ -2141,7 +2075,7 @@ async function loadUsers(quiet) {
     S.users = S.adminUsers.map((u) => ({ user_id: u.user_id, display_name: u.display_name, role: u.role, active: u.active }));
   } catch (e) {
     if (!quiet) fail(e, "Couldn't load users");
-    $("userTable").querySelector("tbody").innerHTML = `<tr><td colspan="6" class="empty">Couldn't load users. ${esc(e.message)}</td></tr>`;
+    $("userTable").querySelector("tbody").innerHTML = `<tr><td colspan="7" class="empty">Couldn't load users. ${esc(e.message)}</td></tr>`;
     return;
   }
   renderUsers();
@@ -2153,10 +2087,17 @@ function renderUsers() {
     const self = u.user_id === me;
     const btn = (act, label, cls = "") => `<button class="btn small ${cls}" data-uact="${act}" data-id="${u.user_id}">${label}</button>`;
     const actions = self
-      ? `<span class="sub nowrap">you</span> ${btn("rename", "Rename")}`
-      : `${btn("role", "Change role")}${btn("rename", "Rename")}${btn("password", "Reset password")}${u.active ? btn("deactivate", "Deactivate", "danger") : btn("reactivate", "Reactivate")}`;
-    return `<tr><td>${esc(u.display_name || "")}</td><td>${esc(u.email)}</td><td><span class="pill ${u.role}">${u.role === "admin" ? "Admin" : "Checkout"}</span></td><td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Active" : "Inactive"}</span></td><td class="sub nowrap">${esc(fmtSignIn(u.last_sign_in_at))}</td><td class="actions">${actions}</td></tr>`;
-  }).join("") : `<tr><td colspan="6" class="empty">No users listed.</td></tr>`;
+      ? `<span class="sub nowrap">you</span> ${btn("rename", "Rename")}${btn("department", "Department")}`
+      : `${btn("role", "Change role")}${btn("rename", "Rename")}${btn("department", "Department")}${btn("password", "Reset password")}${u.active ? btn("deactivate", "Deactivate", "danger") : btn("reactivate", "Reactivate")}`;
+    return `<tr><td>${esc(u.display_name || "")}</td><td>${esc(u.email)}</td><td><span class="pill ${u.role}">${u.role === "admin" ? "Admin" : "Checkout"}</span></td><td>${userDeptLabel(u)}</td><td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Active" : "Inactive"}</span></td><td class="sub nowrap">${esc(fmtSignIn(u.last_sign_in_at))}</td><td class="actions">${actions}</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="empty">No users listed.</td></tr>`;
+}
+// A user's own department, filled in on everything they check out.
+function userDeptLabel(u) {
+  if (!u.department_id) return `<span class="sub">Not set</span>`;
+  const d = S.departments.find((x) => x.id === u.department_id);
+  if (!d) return `<span class="sub">Not set</span>`;
+  return `${esc(d.name)}${d.code ? ` <span class="sub">(${esc(d.code)})</span>` : ""}${d.active ? "" : ' <span class="pill off">Inactive</span>'}`;
 }
 $("refreshUsersBtn").addEventListener("click", () => loadUsers());
 $("genPassBtn").addEventListener("click", () => { $("userPass").value = generatePassword(); });
@@ -2174,14 +2115,14 @@ function showTempPassword(title, email, password, note) {
 }
 
 $("addUserBtn").addEventListener("click", async () => {
-  const email = $("userEmail").value.trim(), display_name = $("userName").value.trim(), password = $("userPass").value, role = $("userRole").value;
+  const email = $("userEmail").value.trim(), display_name = $("userName").value.trim(), password = $("userPass").value, role = $("userRole").value, department_id = $("userDept").value || null;
   if (!email) return toast("Enter an email address.", true);
   if (!display_name) return toast("Enter a display name.", true);
   if (password.length < 8) return toast("Temporary password must be at least 8 characters (use Generate).", true);
   const btn = $("addUserBtn"); btn.disabled = true;
   try {
-    const r = await adminUsers("create", { email, display_name, password, role });
-    $("userEmail").value = ""; $("userName").value = ""; $("userPass").value = ""; $("userRole").value = "checkout";
+    const r = await adminUsers("create", { email, display_name, password, role, department_id });
+    $("userEmail").value = ""; $("userName").value = ""; $("userPass").value = ""; $("userRole").value = "checkout"; $("userDept").value = "";
     if (r.created_login) showTempPassword("User added", r.email, password, "They can sign in right away with this password.");
     else { toast(r.message || "User added"); }
     await loadUsers();
@@ -2192,13 +2133,32 @@ $("addUserBtn").addEventListener("click", async () => {
 $("userTable").addEventListener("click", (e) => {
   const b = e.target.closest("[data-uact]"); if (!b) return;
   const u = S.adminUsers.find((x) => x.user_id === b.dataset.id); if (!u) return;
-  ({ role: openChangeRole, rename: openRename, password: openResetPassword, deactivate: openSetActive, reactivate: openSetActive })[b.dataset.uact](u);
+  ({ role: openChangeRole, rename: openRename, department: openChangeDepartment, password: openResetPassword, deactivate: openSetActive, reactivate: openSetActive })[b.dataset.uact](u);
 });
+
+function openChangeDepartment(u) {
+  const self = u.user_id === S.session.user.id;
+  const opts = S.departments.filter((d) => !d.is_test && (d.active || d.id === u.department_id))
+    .map((d) => `<option value="${d.id}"${d.id === u.department_id ? " selected" : ""}>${esc(d.name)}${d.code ? " (" + esc(d.code) + ")" : ""}${d.active ? "" : " (inactive)"}</option>`).join("");
+  openModal(`<h2>Department</h2><p>${esc(userLabel(u))}</p>
+    <div class="field"><label for="udDept">${self ? "Your" : "Their"} department</label><select id="udDept"><option value="">None</option>${opts}</select></div>
+    <p class="hint">Everything ${self ? "you check" : "they check"} out is charged to this department unless ${self ? "you pick" : "they pick"} another for an item.</p>
+    <div class="btn-row"><button class="btn primary" id="udSave">Save</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
+  $("udSave").addEventListener("click", async () => {
+    const department_id = $("udDept").value || null;
+    if (department_id === (u.department_id || null)) return closeModal();
+    try {
+      await adminUsers("set_department", { user_id: u.user_id, department_id });
+      if (self) { S.me.department_id = department_id; renderCart(); }
+      closeModal(); toast("Department saved"); await loadUsers();
+    } catch (e) { fail(e, "Couldn't change the department"); }
+  });
+}
 
 function openChangeRole(u) {
   openModal(`<h2>Change role</h2><p>${esc(userLabel(u))}</p>
     <div class="field"><label for="crRole">New role</label><select id="crRole"><option value="checkout" ${u.role === "checkout" ? "selected" : ""}>Checkout</option><option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option></select></div>
-    <p class="hint">Checkout users can only scan items out and add employees. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, employees, vendor invoices and users.</p>
+    <p class="hint">Checkout users can only scan items out and see what's in stock. Admins can also receive stock, adjust counts, undo transactions, run reports and manage items, departments, vendor invoices and users.</p>
     <div class="btn-row"><button class="btn primary" id="crSave">Save role</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("crSave").addEventListener("click", async () => {
     const role = $("crRole").value; if (role === u.role) return closeModal();

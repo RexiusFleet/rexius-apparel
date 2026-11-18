@@ -14,24 +14,25 @@ This repository is public. Never commit secrets, passwords or personal email add
 - **`index.html`:** the whole front end, with no build step. Colours are CSS variables, with light values first and dark overrides after.
 - **`supabase/migrations/`:** SQL files, run by hand in the SQL Editor in date order. Write them to be safe to re-run.
 - **`supabase/functions/`:** Edge Functions. Gateway settings are in `supabase/config.toml`, and all deploy with `--no-verify-jwt`.
-  - `admin-users`: admin-only user management.
+  - `admin-users`: admin-only user management, including each user's department.
   - `invoice-extract`: reads a packing slip or invoice with Claude and returns lines for review. Secret: `ANTHROPIC_API_KEY_APPAREL`. Matching keys and fee spreading are in `spread.ts`, with copies in `index.html` that must stay identical.
   - `low-stock-alert`: emails every active admin when a stock change drops an item to its reorder point. Database triggers call it through pg_net, and it sends from the app's own dedicated Gmail account. Secrets: `GMAIL_ADDRESS_APPAREL`, `GMAIL_APP_PASSWORD_APPAREL`. Don't connect any other mail account.
 
 ## Data model (`apparel` schema)
 
 - **`items`:** one row per SKU and size, with `unit_cost`, `reorder_threshold`, `active` and `is_test`.
-- **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero.
+- **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero. A checkout needs a `department_id`; who did it is `performed_by`.
 - **`inventory` view:** gives `on_hand` and `low_stock`, which is `on_hand <= reorder_threshold`. The app shows that flag as **Low**.
 - **`invoices`:** every vendor document, not just invoices. `doc_type` is `packing_slip`, `invoice` or `other`.
   - A packing slip adds stock and never changes cost (`apparel.receive_packing_slip`).
   - An invoice adds no stock. It sets item cost to garment price plus logo charges (`apparel.apply_invoice_costs`), logged in `cost_updates`.
   - Set-up fees are never in item cost. They sit in `invoices.setup_fees` and are charged to the department with code `10` in the report.
 - **`coding_reports`:** one per invoice, for accounting. Check outs not yet on a report fill the invoice total, oldest first. The rest is Stock Up, or carries to the next invoice. `transactions.report_id` marks which report a check out is on. All of it runs in `apparel.coding_report()`.
-- **Other tables:** `departments`, `employees`, `cost_updates`, `vendor_aliases` and `low_stock_alerts` (the email queue and history).
-- **`app_users`:** each user's role is `checkout` or `admin`.
+- **Other tables:** `departments`, `cost_updates`, `vendor_aliases` and `low_stock_alerts` (the email queue and history).
+- **`employees`:** no longer used. Check outs go by department since 2026-11-18. The table and `transactions.employee_id` are kept only for the names on earlier check outs, and nobody can add rows.
+- **`app_users`:** each user's role is `checkout` or `admin`, and their own `department_id`, which check out fills in on every item.
   - Row-level security lets only active app users in.
-  - Checkout users can read, add employees and record check outs.
+  - Checkout users can read and record check outs.
   - Admins can do everything else.
 
 ## How changes go live
@@ -47,7 +48,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 - **No local Deno:** test pure logic with Node, for example `node supabase/functions/invoice-extract/spread.test.ts` and `node supabase/functions/low-stock-alert/message.test.ts`.
 - **SQL:** an in-memory Postgres works (PGlite from npm, installed in a scratch folder), with stubs for Supabase's `auth` schema and `net.http_post`.
 - **Sample documents:** `testing/test-packing-slip.pdf` and `testing/test-invoice.pdf`, rebuilt by `python3 testing/make_test_documents.py`.
-- **Test mode** (Admin → Test mode) keeps test items, employees, departments and documents apart from real data. Use it to try a feature end to end. The Test Product (`TEST-S`, `TEST-M`, `TEST-L`) has a reorder point of 2.
+- **Test mode** (Admin → Test mode) keeps test items, departments and documents apart from real data. Use it to try a feature end to end. The Test Product (`TEST-S`, `TEST-M`, `TEST-L`) has a reorder point of 2.
 
 ## Working with the owner
 
