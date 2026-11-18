@@ -29,7 +29,7 @@ This repository is public. Never commit secrets, passwords or personal email add
   - Set-up fees are never in item cost. They sit in `invoices.setup_fees` and are charged to the department with code `10` in the report.
 - **`coding_reports`:** one per invoice, for accounting. Check outs not yet on a report fill the invoice total, oldest first. The rest is Stock Up, or carries to the next invoice. `transactions.report_id` marks which report a check out is on. All of it runs in `apparel.coding_report()`.
 - **Other tables:** `departments`, `cost_updates`, `vendor_aliases` and `low_stock_alerts` (the email queue and history).
-- **`employees`:** no longer used. Check outs go by department since 2026-11-18. The table and `transactions.employee_id` are kept only for the names on earlier check outs, and nobody can add rows.
+- **No employees:** check outs go by department since 2026-11-18, and the `employees` table and `transactions.employee_id` were deleted the same day.
 - **`app_users`:** each user's role is `checkout` or `admin`, and their own `department_id`, which check out fills in on every item.
   - Row-level security lets only active app users in.
   - Checkout users can read and record check outs.

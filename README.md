@@ -20,6 +20,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261102120000_test_product.sql` — test flags on items and invoices, plus the starting **Test Product** (`TEST-S`, `TEST-M`, `TEST-L`). See "Test product and test mode" below. Run once, the same way.
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script. (Test Employee is no longer used since check outs went by department.)
 - `supabase/migrations/20261118120000_checkout_by_department.sql` — check out by department: each user's own department (`apparel.app_users.department_id`), check outs that need a department and no employee, the Users screen's department column, and coding reports that list who checked each item out. See "Check out by department" below. Run once, the same way, before deploying `admin-users` and pushing the page; safe to re-run.
+- `supabase/migrations/20261118150000_drop_employees.sql` — deletes the `apparel.employees` table and `employee_id` on check outs, once check outs went by department. Can't be undone; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
 - `supabase/migrations/20261110120000_invoice_coding_reports.sql` — invoice coding reports: the `apparel.coding_reports` table, a `report_id` on check outs, and the `apparel.coding_report()` function that previews or saves one. See "Invoice coding reports" below. Run once, the same way, before pushing the page that goes with it; safe to re-run.
@@ -262,7 +263,7 @@ A check out records only the item, the quantity and the department it is charged
 - **Change it per item.** Each item in the cart has its own *Charge to* dropdown, for picking up for someone in another department. Scanning the same item again adds to the line still on your department, so one vest for Parks and one for your own crew stay on separate lines. Moving a line onto a department that already has that item joins the two.
 - **No department set.** If your account has no department (or it was deactivated), an orange note says so, each item starts on *Choose a department*, and Confirm stays off until every item has one.
 - **Test mode** fills in Test Department instead.
-- **The old employees.** The Employees screen and the employee search are gone, and nobody can add employees any more. Nothing was deleted: the `apparel.employees` table and the names on check outs recorded before 2026-11-18 are still in the database, unused by the app. The notes field is still there for anything worth recording, and it now shows in recent activity.
+- **The old employees are deleted.** The Employees screen and the employee search are gone, and `supabase/migrations/20261118150000_drop_employees.sql` deleted the `apparel.employees` table and the employee names on earlier check outs. The check outs themselves are untouched. The notes field is still there for anything worth recording, and it now shows in recent activity.
 
 Setup, once, in this order:
 
@@ -275,6 +276,7 @@ Setup, once, in this order:
 
 3. Push `index.html` to `main`.
 4. Under **Admin → Users**, give everyone a department with the **Department** button, yourself included.
+5. Run `supabase/migrations/20261118150000_drop_employees.sql` in the SQL Editor to delete the old employees. This can't be undone.
 
 ## Day to day
 
