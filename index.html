@@ -229,12 +229,23 @@ tr.low td { background: var(--orange-soft); }
 .cart-line .line-dept label { font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .cart-line .line-dept select { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 6px 10px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); }
 .cart-line .line-dept select.unset { border-color: var(--orange); }
-.picklist { max-height: 260px; overflow-y: auto; border: 1.5px solid var(--line); border-radius: var(--radius); }
+.picklist { max-height: 360px; overflow-y: auto; border: 1.5px solid var(--line); border-radius: var(--radius); }
 .picklist button { display: block; width: 100%; text-align: left; background: var(--panel); color: var(--ink); border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; min-height: var(--tap); }
 .picklist button:last-child { border-bottom: 0; }
 .picklist button:hover, .picklist button:focus { background: var(--lime-soft); }
 .picklist .meta { color: var(--mute); font-size: 14px; }
 .picklist .onhand { float: right; font-variant-numeric: tabular-nums; }
+/* grouped picklist: one block per product, a row of size buttons per colour */
+.pick-group { padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.pick-group:last-child { border-bottom: 0; }
+.pick-group .pick-name { font-weight: 600; }
+.pick-group .pick-color { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.pick-group .pick-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.picklist .pick-sizes button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: auto; min-width: 64px; min-height: var(--tap); padding: 4px 10px; text-align: center;
+  border: 1.5px solid var(--btn-border); border-radius: var(--radius); font-weight: 600; }
+.picklist .pick-sizes button:last-child { border-bottom: 1.5px solid var(--btn-border); }
+.picklist .pick-sizes button .meta { font-size: 12px; font-weight: 400; }
+.picklist .pick-sizes button.out .meta { color: var(--orange); }
 .summary { display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 600; padding: 12px 0 4px; }
 
 /* stat strip */
@@ -380,7 +391,7 @@ tr.low td { background: var(--orange-soft); }
           <div class="btn-row"><button class="btn block" id="pickItemBtn">Pick from list instead</button></div>
         </div>
         <div id="pickArea" style="display:none; margin-top:12px">
-          <div class="field"><label for="pickSearch">Find an item</label><input id="pickSearch" placeholder="Type a name, size or SKU" autocomplete="off"></div>
+          <div class="field"><label for="pickSearch">Find an item</label><input id="pickSearch" placeholder="Type a name, colour, size or SKU" autocomplete="off"></div>
           <div class="picklist" id="pickList"></div>
           <div class="btn-row"><button class="btn small" id="pickCloseBtn">Close list</button></div>
         </div>
@@ -428,7 +439,7 @@ tr.low td { background: var(--orange-soft); }
       </div>
       <div class="panel">
         <h3>Receive one item</h3>
-        <div class="field"><label for="rcvSearch">Item</label><input id="rcvSearch" placeholder="Type a name, size or SKU" autocomplete="off"></div>
+        <div class="field"><label for="rcvSearch">Item</label><input id="rcvSearch" placeholder="Type a name, colour, size or SKU" autocomplete="off"></div>
         <div class="picklist" id="rcvList" style="display:none"></div>
         <div id="rcvChosen" class="hint" style="margin:-6px 0 12px"></div>
         <div class="row">
@@ -462,7 +473,7 @@ tr.low td { background: var(--orange-soft); }
       <div class="stats" id="invStats"></div>
       <div class="panel quiet">
         <div class="row">
-          <div class="field"><label for="invSearch">Search</label><input id="invSearch" placeholder="Name, size or SKU" autocomplete="off"></div>
+          <div class="field"><label for="invSearch">Search</label><input id="invSearch" placeholder="Name, colour, size or SKU" autocomplete="off"></div>
           <div class="field narrow"><label for="invCat">Category</label><select id="invCat"><option value="">All</option></select></div>
           <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option></select></div>
         </div>
@@ -502,8 +513,8 @@ tr.low td { background: var(--orange-soft); }
       </div>
 
       <div class="subview active" id="sub-items">
-        <div class="btn-row" style="margin-bottom:12px"><button class="btn primary" id="addItemBtn">Add item</button><button class="btn" id="bulkItemBtn">Add one item per size</button></div>
-        <div class="panel quiet"><div class="table-wrap"><table id="adminItemsTable"><thead><tr><th>Item</th><th>Category</th><th>Size</th><th>SKU</th><th class="num">Unit cost</th><th class="num">Reorder at</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div></div>
+        <div class="btn-row" style="margin-bottom:12px"><button class="btn primary" id="addItemBtn">Add item</button><button class="btn" id="bulkItemBtn">Add one item per colour and size</button></div>
+        <div class="panel quiet"><div class="table-wrap"><table id="adminItemsTable"><thead><tr><th>Item</th><th>Category</th><th>Colour</th><th>Size</th><th>SKU</th><th class="num">Unit cost</th><th class="num">Reorder at</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div></div>
       </div>
 
       <div class="subview" id="sub-labels">
@@ -622,7 +633,14 @@ const S = {
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const itemLabel = (it) => `${it.name}${it.size ? " – " + it.size : ""}`;
+// An item's colour, from the item itself or, for rows that don't carry it (inventory, coding report lines), from the item list.
+const colorOf = (it) => (it.color ?? (S.items.find((i) => (it.id && i.id === it.id) || (it.sku && i.sku === it.sku)) || {}).color) || "";
+const itemName = (it) => `${it.name}${colorOf(it) ? " – " + colorOf(it) : ""}`;   // "Beanie – Grey"
+const itemLabel = (it) => `${itemName(it)}${it.size ? " – " + it.size : ""}`;      // "Beanie – Grey – OS"
+// Sizes in wearing order (XS, S, M, L, XL, 2XL…), then anything else alphabetically.
+const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "2xl", "3xl", "4xl", "5xl", "6xl"];
+const sizeRank = (sz) => { const k = String(sz || "").toLowerCase().replace(/\s+/g, "").replace(/^xxl$/, "2xl").replace(/^xxxl$/, "3xl"); const i = SIZE_ORDER.indexOf(k); return i < 0 ? 100 : i; };
+const bySize = (a, b) => sizeRank(a.size) - sizeRank(b.size) || String(a.size || "").localeCompare(String(b.size || ""), undefined, { numeric: true });
 const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 const isAdmin = () => S.role === "admin";
 // Departments are known by number first: "10 (Admin)", or just the name when there's no code.
@@ -703,7 +721,7 @@ async function boot() {
    ========================================================= */
 async function loadRefs() {
   const [it, inv, dp] = await Promise.all([
-    sb.from("items").select("*").order("name").order("size"),
+    sb.from("items").select("*").order("name").order("color", { nullsFirst: true }).order("size"),
     sb.from("inventory").select("*").order("name").order("size"),
     sb.from("departments").select("*").order("name")
   ]);
@@ -755,18 +773,43 @@ $("adminNav").addEventListener("click", (e) => {
 /* =========================================================
    ITEM PICKLIST (shared by checkout + receive)
    ========================================================= */
+// Every word typed must appear somewhere in the item, so "grey beanie" and "vest xl" both work.
 function filterItems(q) {
-  q = q.trim().toLowerCase();
-  return S.items.filter((it) => it.active && inScope(it.id) && (!q || `${it.name} ${it.size || ""} ${it.sku} ${it.category || ""}`.toLowerCase().includes(q)));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return S.items.filter((it) => it.active && inScope(it.id) && words.every((w) => `${it.name} ${it.color || ""} ${it.size || ""} ${it.sku} ${it.category || ""}`.toLowerCase().includes(w)));
 }
+// One block per product (items with the same name), then a row of size buttons for each colour.
 function renderPicklist(el, q, onPick) {
-  const list = filterItems(q).slice(0, 60);
+  const groups = new Map();
+  filterItems(q).forEach((it) => { const k = it.name.trim().toLowerCase(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); });
+  const list = [...groups.values()].sort((a, b) => a[0].name.localeCompare(b[0].name)).slice(0, 40);
   el.innerHTML = list.length ? "" : `<div class="empty">No matching items.</div>`;
-  list.forEach((it) => {
-    const b = document.createElement("button"); b.type = "button";
-    b.innerHTML = `<span class="onhand">${onHandOf(it.id)} on hand</span><div>${esc(itemLabel(it))}</div><div class="meta">${esc(it.sku)}${it.category ? " · " + esc(it.category) : ""}</div>`;
-    b.addEventListener("click", () => onPick(it));
-    el.appendChild(b);
+  list.forEach((items) => {
+    const g = document.createElement("div"); g.className = "pick-group";
+    const cats = [...new Set(items.map((i) => i.category).filter(Boolean))];
+    g.innerHTML = `<div class="pick-name">${esc(items[0].name)}${cats.length === 1 ? ` <span class="meta">· ${esc(cats[0])}</span>` : ""}</div>`;
+    const colors = new Map();
+    items.forEach((it) => { const c = (it.color || "").trim(); if (!colors.has(c.toLowerCase())) colors.set(c.toLowerCase(), { name: c, items: [] }); colors.get(c.toLowerCase()).items.push(it); });
+    const button = (it, label) => {
+      const oh = onHandOf(it.id), b = document.createElement("button"); b.type = "button";
+      b.className = oh > 0 ? "" : "out"; b.title = `${itemLabel(it)} · ${it.sku}`; b.setAttribute("aria-label", `${itemLabel(it)}, ${oh} on hand`);
+      b.innerHTML = `<span>${esc(label || "Pick")}</span><span class="meta">${oh} on hand</span>`;
+      b.addEventListener("click", () => onPick(it));
+      return b;
+    };
+    const cs = [...colors.values()].sort((a, b) => (!!a.name - !!b.name) || a.name.localeCompare(b.name));
+    if (cs.length > 1 && cs.every((c) => c.items.length === 1)) {
+      // One item per colour (a one-size beanie in grey and black): a single row of colour buttons.
+      const row = document.createElement("div"); row.className = "pick-sizes";
+      cs.forEach((c) => row.appendChild(button(c.items[0], [c.name, c.items[0].size].filter(Boolean).join(" · "))));
+      g.appendChild(row);
+    } else cs.forEach((c) => {
+      if (c.name) { const h = document.createElement("div"); h.className = "pick-color"; h.textContent = c.name; g.appendChild(h); }
+      const row = document.createElement("div"); row.className = "pick-sizes";
+      c.items.sort(bySize).forEach((it) => row.appendChild(button(it, it.size)));
+      g.appendChild(row);
+    });
+    el.appendChild(g);
   });
 }
 
@@ -1471,7 +1514,7 @@ async function confirmInvoiceCosts() {
 }
 async function loadAliases() {
   if (!isAdmin()) return;
-  const { data, error } = await sb.from("vendor_aliases").select("*, item:items(name,size,sku)").order("vendor").order("alias_key");
+  const { data, error } = await sb.from("vendor_aliases").select("*, item:items(name,color,size,sku)").order("vendor").order("alias_key");
   if (error) return fail(error, "Couldn't load vendor matches");
   S.aliases = data || []; renderAliases(); renderVendorList();
 }
@@ -1543,7 +1586,7 @@ async function openInvoice(id) {
   const v = S.invoices.find((x) => x.id === id); if (!v) return;
   const [{ data, error }, costs] = await Promise.all([
     sb.storage.from(INVOICE_BUCKET).createSignedUrl(v.file_path, 600),
-    v.cost_count ? sb.from("cost_updates").select("qty, old_cost, new_cost, created_at, item:items(name,size)").eq("invoice_id", v.id).order("created_at") : Promise.resolve({ data: [] })
+    v.cost_count ? sb.from("cost_updates").select("qty, old_cost, new_cost, created_at, item:items(name,color,size)").eq("invoice_id", v.id).order("created_at") : Promise.resolve({ data: [] })
   ]);
   if (error) return fail(error, "Couldn't open the file");
   const costList = (costs.data || []).length ? `<p class="hint"><strong>Costs set from this invoice</strong><br>${costs.data.map((c) => `${esc(c.item ? itemLabel(c.item) : "An item")}: ${money(c.old_cost)} to ${money(c.new_cost)}`).join("<br>")}</p>` : "";
@@ -1670,7 +1713,7 @@ function codingReportHtml(d) {
       Number(r.gap) && g.code === SETUP_FEE_DEPT_CODE ? `<tr><td></td><td></td><td>Balance to invoice total</td><td class="num"></td><td class="num"></td><td class="num">${money(r.gap)}</td></tr>` : ""].join("");
     return `<h3>Dept ${esc(g.code)} <span class="rep-total">${money(g.amount)}</span></h3>
       <table><thead><tr><th>Date</th><th>Checked out by</th><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>
-      ${ls.map((l) => `<tr><td>${day(l.date)}</td><td>${esc(l.checked_out_by || "")}</td><td>${esc(itemLabel({ name: l.item, size: l.size }))}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.amount)}</td></tr>`).join("")}${extra}</tbody></table>`;
+      ${ls.map((l) => `<tr><td>${day(l.date)}</td><td>${esc(l.checked_out_by || "")}</td><td>${esc(itemLabel({ name: l.item, size: l.size, sku: l.sku }))}</td><td class="num">${l.qty}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.amount)}</td></tr>`).join("")}${extra}</tbody></table>`;
   }).join("");
   return `<div class="coding-report">
     <h2>Invoice coding report${r.is_test ? " (TEST)" : ""}</h2>
@@ -1713,7 +1756,7 @@ function downloadCodingCsv(d) {
   const cell = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
   const head = [v.invoice_no || "", v.vendor, v.invoice_date || ""];
   const lines = [["Invoice no.", "Vendor", "Invoice date", "Dept code", "Type", "Date", "Checked out by", "Item", "Size", "Qty", "Unit cost", "Amount"].map(cell).join(",")];
-  d.lines.forEach((l) => lines.push([...head, codeOf(l), "Check out", new Date(l.date).toLocaleDateString(), l.checked_out_by, l.item, l.size, l.qty, Number(l.unit_cost).toFixed(2), Number(l.amount).toFixed(2)].map(cell).join(",")));
+  d.lines.forEach((l) => lines.push([...head, codeOf(l), "Check out", new Date(l.date).toLocaleDateString(), l.checked_out_by, itemName({ name: l.item, sku: l.sku }), l.size, l.qty, Number(l.unit_cost).toFixed(2), Number(l.amount).toFixed(2)].map(cell).join(",")));
   const extra = (code, type, amount) => { if (Number(amount)) lines.push([...head, code, type, "", "", "", "", "", "", Number(amount).toFixed(2)].map(cell).join(",")); };
   extra(SETUP_FEE_DEPT_CODE, "Set-up fees", r.setup_fees); extra(SETUP_FEE_DEPT_CODE, "Balance to invoice total", r.gap); extra("Stock Up", "Stock Up", r.stock_up);
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1741,10 +1784,10 @@ function renderInventory() {
     <div class="stat"><div class="n">${money(value)}</div><div class="l">inventory value at current cost</div></div>`;
 
   const q = $("invSearch").value.trim().toLowerCase(); const cat = $("invCat").value; const only = $("invOnly").value;
-  let rows = active.filter((i) => (!q || `${i.name} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock));
-  rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || String(a.size || "").localeCompare(String(b.size || "")));
+  let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock));
+  rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
   const tb = $("invTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(i.name)}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
     : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => { const b = e.target.closest("[data-adjust]"); if (b) openAdjust(b.dataset.adjust); });
@@ -1765,7 +1808,7 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
-  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, entered_by, invoice_id, report_id, item:items(name,size,sku), department:departments(id,name,code), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
+  const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, entered_by, invoice_id, report_id, item:items(name,color,size,sku), department:departments(id,name,code), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
@@ -1844,7 +1887,7 @@ async function runReport() {
   const from = $("repFrom").value, to = $("repTo").value;
   if (!from || !to) return toast("Choose both dates.", true);
   const start = new Date(from + "T00:00:00"), end = new Date(to + "T00:00:00"); end.setDate(end.getDate() + 1);
-  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, entered_by, report_id, item:items(name,size,sku,category), department:departments(id,name,code)")
+  let q = sb.from("transactions").select("id, qty_change, unit_cost, notes, created_at, performed_by, entered_by, report_id, item:items(name,color,size,sku,category), department:departments(id,name,code)")
     .eq("type", "checkout").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()).order("created_at");
   const deptFilter = $("repDept").value;
   if (deptFilter) q = q.eq("department_id", deptFilter);
@@ -1892,7 +1935,7 @@ $("csvBtn").addEventListener("click", () => {
   if (!S.report) return;
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [["Date", "Dept code", "Department", "Item", "Size", "SKU", "Category", "Qty", "Unit cost", "Total", "Checked out by", "Notes"].map(cell).join(",")];
-  S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.code, t.department?.name, t.item?.name, t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), userName(t.performed_by), t.notes].map(cell).join(",")));
+  S.report.rows.forEach((t) => lines.push([new Date(t.created_at).toLocaleDateString(), t.department?.code, t.department?.name, t.item ? itemName(t.item) : "", t.item?.size, t.item?.sku, t.item?.category, -t.qty_change, Number(t.unit_cost || 0).toFixed(2), (-t.qty_change * Number(t.unit_cost || 0)).toFixed(2), userName(t.performed_by), t.notes].map(cell).join(",")));
   const d = S.report.feeDept;
   S.report.fees.forEach((f) => lines.push([new Date(f.date + "T00:00:00").toLocaleDateString(), d?.code || SETUP_FEE_DEPT_CODE, d?.name || `Department ${SETUP_FEE_DEPT_CODE}`, "Vendor set-up fees", "", "", "Set-up", "", "", Number(f.setup_fees).toFixed(2), "", `${f.vendor}${f.invoice_no ? " invoice " + f.invoice_no : ""}`].map(cell).join(",")));
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1991,8 +2034,8 @@ $("testClearBtn").addEventListener("click", async () => {
    ========================================================= */
 function renderAdminItems() {
   const tb = $("adminItemsTable").querySelector("tbody");
-  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
-    : `<tr><td colspan="8" class="empty">No items yet. Add one, or add one item per size to build out a whole product at once.</td></tr>`;
+  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.color || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
+    : `<tr><td colspan="9" class="empty">No items yet. Add one, or add one item per colour and size to build out a whole product at once.</td></tr>`;
 }
 $("adminItemsTable").addEventListener("click", async (e) => {
   const ed = e.target.closest("[data-edit]"), tg = e.target.closest("[data-toggle]"), dl = e.target.closest("[data-delete]");
@@ -2001,18 +2044,20 @@ $("adminItemsTable").addEventListener("click", async (e) => {
   if (tg) { const i = S.items.find((x) => x.id === tg.dataset.toggle); const { error } = await sb.from("items").update({ active: !i.active }).eq("id", i.id); if (error) return fail(error, "Couldn't update item"); toast(i.active ? "Item deactivated" : "Item reactivated"); await loadRefs(); }
 });
 $("addItemBtn").addEventListener("click", () => openItemForm(null));
+const colorDatalist = () => `<datalist id="colorList">${[...new Set(S.items.map((i) => (i.color || "").trim()).filter(Boolean))].sort().map((c) => `<option value="${esc(c)}">`).join("")}</datalist>`;
 function openItemForm(it) {
   openModal(`<h2>${it ? "Edit item" : "Add item"}</h2>
     <div class="field"><label for="fName">Name</label><input id="fName" value="${esc(it?.name || "")}" placeholder="Hi-Vis Class 2 Vest"></div>
-    <div class="row"><div class="field"><label for="fCat">Category</label><input id="fCat" value="${esc(it?.category || "")}" placeholder="vest, shirt, jacket…" list="catList"></div><div class="field narrow"><label for="fSize">Size</label><input id="fSize" value="${esc(it?.size || "")}" placeholder="L"></div></div>
-    <datalist id="catList">${[...new Set(S.items.map((i) => i.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
+    <div class="row"><div class="field"><label for="fCat">Category</label><input id="fCat" value="${esc(it?.category || "")}" placeholder="vest, shirt, jacket…" list="catList"></div><div class="field narrow"><label for="fColor">Colour</label><input id="fColor" value="${esc(it?.color || "")}" placeholder="Grey" list="colorList"></div><div class="field narrow"><label for="fSize">Size</label><input id="fSize" value="${esc(it?.size || "")}" placeholder="L"></div></div>
+    <p class="hint">Items with the same name are grouped when someone picks one, then chosen by colour and size. Leave the colour blank if the product only comes in one.</p>
+    <datalist id="catList">${[...new Set(S.items.map((i) => i.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("")}</datalist>${colorDatalist()}
     <div class="field"><label for="fSku">SKU (goes on the label)</label><input id="fSku" value="${esc(it?.sku || "")}" placeholder="HV-VEST-C2-L" style="text-transform:uppercase"></div>
     <div class="row"><div class="field narrow"><label for="fCost">Unit cost</label><input id="fCost" type="number" step="0.01" min="0" inputmode="decimal" value="${it ? Number(it.unit_cost).toFixed(2) : ""}"></div><div class="field narrow"><label for="fThr">Reorder when at or below</label><input id="fThr" type="number" min="0" inputmode="numeric" value="${it?.reorder_threshold ?? 5}"></div></div>
     ${(it ? it.is_test : S.testMode) ? `<p class="hint">${it ? "This is a test item" : "Test mode is on, so this will be a test item"}: it only shows in test mode and is left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="fSave">${it ? "Save changes" : "Add item"}</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("fName").focus();
   $("fSave").addEventListener("click", async () => {
-    const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, reorder_threshold: parseInt($("fThr").value) || 0 };
+    const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, color: $("fColor").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, reorder_threshold: parseInt($("fThr").value) || 0 };
     if (!row.name || !row.sku) return toast("Name and SKU are required.", true);
     if (!it && S.testMode) row.is_test = true;   // set only when adding, so an item with real history can't be hidden from reports later
     const { error } = it ? await sb.from("items").update(row).eq("id", it.id) : await sb.from("items").insert(row);
@@ -2021,19 +2066,30 @@ function openItemForm(it) {
   });
 }
 $("bulkItemBtn").addEventListener("click", () => {
-  openModal(`<h2>Add one item per size</h2><p class="hint">Creates a separate item (and SKU) for every size, so each gets its own label and count.</p>
-    <div class="field"><label for="bName">Name</label><input id="bName" placeholder="Hi-Vis Class 3 Long Sleeve"></div>
+  openModal(`<h2>Add one item per colour and size</h2><p class="hint">Creates a separate item (and SKU) for every colour and size, so each gets its own label and count. They're grouped under one name when someone picks an item.</p>
+    <div class="field"><label for="bName">Name</label><input id="bName" placeholder="Hi-Vis Class 3 Long Sleeve"></div>${colorDatalist()}
     <div class="row"><div class="field"><label for="bCat">Category</label><input id="bCat" placeholder="shirt"></div><div class="field"><label for="bPrefix">SKU prefix</label><input id="bPrefix" placeholder="HV-LS-C3" style="text-transform:uppercase"></div></div>
+    <div class="field"><label for="bColors">Colours, comma separated (optional)</label><input id="bColors" placeholder="Grey, Black" list="colorList"></div>
     <div class="field"><label for="bSizes">Sizes, comma separated</label><input id="bSizes" value="S, M, L, XL, 2XL, 3XL"></div>
+    <p class="hint" id="bPreview"></p>
     <div class="row"><div class="field narrow"><label for="bCost">Unit cost</label><input id="bCost" type="number" step="0.01" min="0" inputmode="decimal"></div><div class="field narrow"><label for="bThr">Reorder when at or below</label><input id="bThr" type="number" min="0" value="5"></div></div>
     ${S.testMode ? `<p class="hint">Test mode is on, so these will be test items: they only show in test mode and are left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="bSave">Add items</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("bName").focus();
+  const list = (id) => [...new Set($(id).value.split(",").map((s) => s.trim()).filter(Boolean))];
+  const skuPart = (s) => s.replace(/\s+/g, "").toUpperCase();
+  // SKU is <prefix>-<COLOUR>-<SIZE>, or <prefix>-<SIZE> with no colours, e.g. RX-BN-GREY-OS.
+  const build = () => {
+    const prefix = $("bPrefix").value.trim().toUpperCase(), sizes = list("bSizes"), colors = list("bColors");
+    return (colors.length ? colors : [null]).flatMap((c) => sizes.map((sz) => ({ name: $("bName").value.trim(), category: $("bCat").value.trim() || null, color: c, size: sz,
+      sku: [prefix, c && skuPart(c), skuPart(sz)].filter(Boolean).join("-"), unit_cost: Number($("bCost").value) || 0, reorder_threshold: parseInt($("bThr").value) || 0 })));
+  };
+  const preview = () => { const r = $("bPrefix").value.trim() && list("bSizes").length ? build() : []; $("bPreview").textContent = r.length ? `${plural(r.length, "item")}: ${r.slice(0, 4).map((x) => x.sku).join(", ")}${r.length > 4 ? "…" : ""}` : ""; };
+  ["bPrefix", "bColors", "bSizes"].forEach((id) => $(id).addEventListener("input", preview)); preview();
   $("bSave").addEventListener("click", async () => {
     const name = $("bName").value.trim(), prefix = $("bPrefix").value.trim().toUpperCase();
-    const sizes = $("bSizes").value.split(",").map((s) => s.trim()).filter(Boolean);
-    if (!name || !prefix || !sizes.length) return toast("Name, SKU prefix and at least one size are required.", true);
-    const rows = sizes.map((sz) => ({ name, category: $("bCat").value.trim() || null, size: sz, sku: `${prefix}-${sz.replace(/\s+/g, "").toUpperCase()}`, unit_cost: Number($("bCost").value) || 0, reorder_threshold: parseInt($("bThr").value) || 0 }));
+    if (!name || !prefix || !list("bSizes").length) return toast("Name, SKU prefix and at least one size are required.", true);
+    const rows = build();
     if (S.testMode) rows.forEach((r) => (r.is_test = true));
     const { error } = await sb.from("items").insert(rows);
     if (error) return fail(error, error.code === "23505" ? "One of those SKUs already exists" : "Couldn't add items");
@@ -2061,7 +2117,7 @@ $("printLabelsBtn").addEventListener("click", () => {
       const l = document.createElement("div"); l.className = "label";
       const qr = document.createElement("div"); qr.className = "qr";
       new QRCode(qr, { text: it.sku, width: 79, height: 79, correctLevel: QRCode.CorrectLevel.M });
-      const t = document.createElement("div"); t.className = "t"; t.innerHTML = `<div class="n">${esc(it.name)}</div><div class="s">${esc(it.size || "")}</div><div class="k">${esc(it.sku)}</div>`;
+      const t = document.createElement("div"); t.className = "t"; t.innerHTML = `<div class="n">${esc(it.name)}</div><div class="s">${esc([it.color, it.size].filter(Boolean).join(" · "))}</div><div class="k">${esc(it.sku)}</div>`;
       l.appendChild(qr); l.appendChild(t); pg.appendChild(l);
     });
     sheet.appendChild(pg);

@@ -165,12 +165,12 @@ type ExtractionT = z.infer<typeof Extraction>;
 /** "" (and whitespace) back to null, so the page sees the same shape as before. */
 const blankToNull = (s: string | null | undefined): string | null => (typeof s === "string" && s.trim() !== "" ? s.trim() : null);
 
-type Item = { id: string; name: string; size: string | null; sku: string | null; category: string | null; active: boolean; is_test: boolean };
+type Item = { id: string; name: string; color: string | null; size: string | null; sku: string | null; category: string | null; active: boolean; is_test: boolean };
 type Alias = { vendor_key: string; alias_key: string; item_id: string };
 type DocType = "invoice" | "packing_slip" | "other";
 
 function systemPrompt(items: Item[], docType: DocType): string {
-  const catalog = items.map((i) => ({ id: i.id, name: i.name, size: i.size ?? "", sku: i.sku ?? "", category: i.category ?? "" }));
+  const catalog = items.map((i) => ({ id: i.id, name: i.name, color: i.color ?? "", size: i.size ?? "", sku: i.sku ?? "", category: i.category ?? "" }));
   const purpose = docType === "packing_slip"
     ? "This document was filed as a PACKING SLIP. What you report as qty is added to stock, so it must be what physically arrived."
     : docType === "invoice"
@@ -178,7 +178,7 @@ function systemPrompt(items: Item[], docType: DocType): string {
       : "This document was filed as 'other'. Extract what you can.";
   return [
     "You read apparel vendor documents (packing slips and invoices) for an internal inventory app and return structured data for a person to review before anything is recorded.",
-    "The company stocks branded high-visibility work apparel in multiple sizes. Each size is a separate catalog item. The same blank garment can be printed with different designs, which are different catalog items.",
+    "The company stocks branded high-visibility work apparel in multiple sizes and sometimes several colours. Each size and colour is a separate catalog item. The same blank garment can be printed with different designs, which are different catalog items.",
     purpose,
     "",
     "Rules:",
@@ -191,7 +191,7 @@ function systemPrompt(items: Item[], docType: DocType): string {
     "- Decoration and set-up: screen printing, embroidery, logos, patches, heat transfers, digitizing, screen or set-up fees and reorder/reset fees are not products. Put them in add_on_charges with the printed extended total, never in lines. Do not spread or allocate them yourself; the app does that.",
     "- If an invoice is split into sections (separate orders, designs or ship-tos), label each line's and each charge's section in `group` so logo charges stay with their own garments. Otherwise leave group empty.",
     "- Freight, shipping, handling and tax go in other_charges.",
-    "- Match each line to a catalog item only when product, design (when the catalog distinguishes it) AND size clearly agree. Vendor wording differs from ours (abbreviations, part numbers, colour codes, '4X' for '4XL', 'LG' for 'L'); use judgement on the product but never on the size. If the size is not in the catalog, leave item_id empty and say in note which size.",
+    "- Match each line to a catalog item only when product, colour (when the catalog item has one), design (when the catalog distinguishes it) AND size clearly agree. Vendor wording differs from ours (abbreviations, part numbers, colour codes, '4X' for '4XL', 'LG' for 'L'); use judgement on the product but never on the size. If the size is not in the catalog, leave item_id empty and say in note which size.",
     "- Ignore shipping addresses and carriers; they do not matter here.",
     "- Dates are YYYY-MM-DD.",
     "- Text fields with nothing to report are \"\" (empty), never made up.",
@@ -231,7 +231,7 @@ async function extract(admin: SupabaseClient, invoiceId: string, includeTest: bo
   }
 
   const [{ data: items, error: itErr }, { data: aliases, error: alErr }] = await Promise.all([
-    admin.from("items").select("id, name, size, sku, category, active, is_test").eq("active", true).eq("is_test", includeTest).order("name").order("size"),
+    admin.from("items").select("id, name, color, size, sku, category, active, is_test").eq("active", true).eq("is_test", includeTest).order("name").order("size"),
     admin.from("vendor_aliases").select("vendor_key, alias_key, item_id"),
   ]);
   if (itErr) throw new HttpError(500, `Couldn't load items: ${itErr.message}`);

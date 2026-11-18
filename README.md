@@ -21,6 +21,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261102180000_test_employee_department.sql` — test flags on employees and departments, plus **Test Employee** and **Test Department** (code `TEST`), so a test checkout touches nothing real. Run once, the same way, after the test product script. (Test Employee is no longer used since check outs went by department.)
 - `supabase/migrations/20261118120000_checkout_by_department.sql` — check out by department: each user's own department (`apparel.app_users.department_id`), check outs that need a department and no employee, the Users screen's department column, and coding reports that list who checked each item out. See "Check out by department" below. Run once, the same way, before deploying `admin-users` and pushing the page; safe to re-run.
 - `supabase/migrations/20261118170000_admin_checkout_for_others.sql` — lets admins record check outs for any user, while everyone else still checks out only as themselves, and adds `entered_by`, who actually entered each transaction. Run once, the same way, before pushing the page that goes with it; safe to re-run.
+- `supabase/migrations/20261118190000_item_colors.sql` — item colours: `apparel.items.color`, moves a colour already in an item's name into it, and puts the colour in low-stock emails. See "Colours" below. Run once, the same way, before deploying `invoice-extract` and pushing the page; safe to re-run.
 - `supabase/migrations/20261118150000_drop_employees.sql` — deletes the `apparel.employees` table and `employee_id` on check outs, once check outs went by department. Can't be undone; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
@@ -120,7 +121,7 @@ The anon key is safe to publish: it only grants what the row-level security poli
 In the app, Admin tab:
 
 1. **Departments** — add each department that gets charged back.
-2. **Items** — use "Add one item per size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, sizes `S, M, L, XL, 2XL, 3XL`). Set the unit cost and reorder threshold.
+2. **Items** — use "Add one item per colour and size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, colours `Lime, Orange`, sizes `S, M, L, XL, 2XL, 3XL`). Leave colours blank for a product that only comes in one. Set the unit cost and reorder threshold.
 3. **Users** — give each person a department (the **Department** button), so check out fills it in for them.
 4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling).
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
@@ -282,6 +283,18 @@ Setup, once, in this order:
 3. Push `index.html` to `main`.
 4. Under **Admin → Users**, give everyone a department with the **Department** button, yourself included.
 5. Run `supabase/migrations/20261118150000_drop_employees.sql` in the SQL Editor to delete the old employees. This can't be undone.
+
+## Colours
+
+Each colour of a product is its own item, just like each size: its own SKU, QR label, count, reorder point and cost. `apparel.items.color` (optional) is what groups them.
+
+- **Picking an item.** *Pick from list* on Check out, and the item search on Receive, show one block per product (items with the same name). Under it is a row of size buttons for each colour, each with its on-hand count (orange at 0). A product with one item per colour, like a one-size beanie, shows a single row of colour buttons instead. Search matches every word typed against name, colour, size, SKU and category, so `grey beanie` or `vest orange xl` both work. Scanning a label is unchanged.
+- **Adding items.** **Admin → Items → Add one item per colour and size** makes every combination at once, with SKUs `<prefix>-<COLOUR>-<SIZE>` (e.g. `RX-BN-GREY-OS`), or `<prefix>-<SIZE>` with no colours. It shows how many items it will make before you save. *Add item* and *Edit* have a Colour box that suggests colours already in use. Keep the name identical across colours so they group.
+- **Where it shows.** Items are named "Beanie – Grey – OS" everywhere one appears: the cart, Inventory, recent activity, reports and their CSVs (in the Item column), coding reports, low-stock emails and vendor matches. Admin → Items has its own Colour column, and labels print colour and size together ("Grey · OS").
+- **Reading documents.** The document reader is given each item's colour and only matches a line when the colour agrees.
+- **Colours already in names.** The SQL moved a colour at the start or end of a name into the field ("Black Beanie", "Beanie - Grey" and "Beanie (Grey)" all become Beanie + colour), and its last query lists every item with a colour. Fix any it got wrong under Admin → Items → Edit.
+
+Setup, once, in this order: run `supabase/migrations/20261118190000_item_colors.sql` in the SQL Editor, deploy the reader with `supabase functions deploy invoice-extract --no-verify-jwt`, then push `index.html`.
 
 ## Day to day
 

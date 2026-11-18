@@ -20,7 +20,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 
 ## Data model (`apparel` schema)
 
-- **`items`:** one row per SKU and size, with `unit_cost`, `reorder_threshold`, `active` and `is_test`.
+- **`items`:** one row per SKU, colour and size, with `color` (optional), `unit_cost`, `reorder_threshold`, `active` and `is_test`. Items with the same name are one product in the picker, grouped by colour then size.
 - **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero. A checkout needs a `department_id`. `performed_by` is who it's for: themselves for checkout users, anyone for admins. `entered_by` is who actually entered it, set by a trigger.
 - **`inventory` view:** gives `on_hand` and `low_stock`, which is `on_hand <= reorder_threshold`. The app shows that flag as **Low**.
 - **`invoices`:** every vendor document, not just invoices. `doc_type` is `packing_slip`, `invoice` or `other`.
