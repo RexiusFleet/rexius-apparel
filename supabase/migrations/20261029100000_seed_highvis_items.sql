@@ -15,6 +15,10 @@
 -- Reorder points are 10 for everything except the ball cap (since
 -- 2026-11-03; see 20261103120000_reorder_points_10.sql).
 --
+-- Don't re-run after 20261118210000_hivis_vest_cap_colors.sql:
+-- that renamed these SKUs (SS-HVY-L, SV-YL-L, BC-BL),
+-- so this would add a second, colourless set under the old SKUs.
+--
 -- Safe to re-run: an existing SKU gets its name, category, size
 -- and reorder threshold refreshed, but its unit cost and
 -- active flag are left alone (those are maintained in the app).

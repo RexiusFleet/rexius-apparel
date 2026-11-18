@@ -12,6 +12,10 @@
 -- Adding items never sends a low-stock email.
 --
 -- Safe to re-run: a SKU that is already there is left as it is.
+--
+-- Don't re-run after 20261118200000_fleet_services_black.sql:
+-- that renamed these SKUs to FS-SS-BL-L etc., so this would
+-- add a second, colourless set under the old SKUs.
 -- ============================================================
 
 insert into apparel.items (sku, name, category, size, unit_cost, reorder_threshold, active)
