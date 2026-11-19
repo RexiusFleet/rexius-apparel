@@ -315,6 +315,20 @@ tr.low td { background: var(--orange-soft); }
 .label-picker .lp-name { font-weight: 500; }
 .label-picker input { min-height: 40px; width: 80px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--field); text-align: center; }
 #labelSheet { display: none; }
+/* Labels (Avery 5160). Styled outside print so printLabels can measure them in a hidden, off-screen copy first. */
+#labelSheet.measuring { display: block; position: absolute; left: -10000px; top: 0; visibility: hidden; }
+#labelSheet .sheet { width: 8.5in; padding: 0.5in 0 0 0.1875in; display: grid; grid-template-columns: repeat(3, 2.625in); column-gap: 0.125in; grid-auto-rows: 1in; }
+#labelSheet .label { display: flex; align-items: center; gap: 0.08in; padding: 0.06in 0.1in; overflow: hidden; }
+#labelSheet .qr { width: 0.82in; height: 0.82in; flex: 0 0 auto; }
+#labelSheet .qr img, #labelSheet .qr canvas { width: 0.82in !important; height: 0.82in !important; }
+#labelSheet .t { font-family: var(--font); line-height: 1.08; min-width: 0; flex: 1 1 auto; color: #000; }
+#labelSheet .t .n { font-weight: 800; font-size: 13.5pt; overflow-wrap: anywhere; }
+#labelSheet .t .n .nw { white-space: nowrap; }   /* keep "Hi-Vis", "Tee -" and "Short Sleeve" whole: names wrap at other spaces */
+#labelSheet .t .lrow { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; margin-top: 2px; }
+#labelSheet .t .lrow.wrap { flex-wrap: wrap; }
+#labelSheet .t .sz { font-weight: 800; font-size: 19pt; line-height: 1; }
+#labelSheet .t .c { font-size: 11pt; font-weight: 600; color: #333; white-space: nowrap; }
+#labelSheet .t .k { font-size: 7pt; color: #666; margin-top: 2px; }
 #reportSheet { display: none; }
 .modal.wide { max-width: 860px; }
 .coding-report h3 { margin: 18px 0 4px; display: flex; justify-content: space-between; align-items: baseline; }
@@ -333,17 +347,7 @@ tr.low td { background: var(--orange-soft); }
   #reportSheet table { font-size: 10pt; } #reportSheet th, #reportSheet td { padding: 3pt 5pt; color: #000; border-color: #999; }
   #reportSheet tr { break-inside: avoid; } #reportSheet .rep-note { color: #333; }
   @page { size: letter; margin: 0; }
-  .sheet { width: 8.5in; height: 11in; padding: 0.5in 0 0 0.1875in; display: grid; grid-template-columns: repeat(3, 2.625in); column-gap: 0.125in; grid-auto-rows: 1in; page-break-after: always; }
-  .label { display: flex; align-items: center; gap: 0.08in; padding: 0.06in 0.1in; overflow: hidden; }
-  .label .qr { width: 0.82in; height: 0.82in; flex: 0 0 auto; }
-  .label .qr img, .label .qr canvas { width: 0.82in !important; height: 0.82in !important; }
-  .label .t { font-family: var(--font); line-height: 1.1; min-width: 0; }
-  .label .t .n { font-weight: 800; font-size: 13.5pt; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .label .t .n .nw { white-space: nowrap; }   /* keep "Hi-Vis", "T-Shirt" whole: long names wrap at spaces only */
-  .label .t .row { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; }
-  .label .t .sz { font-weight: 800; font-size: 19pt; line-height: 1; }
-  .label .t .c { font-size: 11pt; font-weight: 600; color: #333; }
-  .label .t .k { font-size: 7pt; color: #666; margin-top: 2px; }
+  #labelSheet .sheet { height: 11in; page-break-after: always; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -2109,19 +2113,74 @@ function renderLabelPicker() {
 }
 $("labelsClearBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 0)));
 $("labelsOneBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 1)));
-$("printLabelsBtn").addEventListener("click", () => {
+/* Label wording, for labels only (item names and sizes in the app don't change) */
+const labelName = (n) => n.replace(/\bt-?shirt\b/gi, "Tee").replace(/\b(short|long)-sleeve\b/gi, "$1 Sleeve");
+const labelSize = (z) => (/^(os|one size)$/i.test(z || "") ? "" : z || "");   // one-size items print just their colour
+function labelText(it) {
+  const t = document.createElement("div"); t.className = "t";
+  t.innerHTML = `<div class="n">${esc(labelName(it.name)).replace(/\b(?:short|long) sleeve\b|\S+ -(?= )|\S*-\S*/gi, (w) => `<span class="nw">${w}</span>`)}</div><div class="lrow">${labelSize(it.size) ? `<span class="sz">${esc(labelSize(it.size))}</span>` : ""}${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
+  return t;
+}
+/* Auto-fit: full size is name 13.5pt, colour 11pt. A label that won't fit first shrinks the colour (to 8pt) so it
+   stays beside the size, wraps it under the size only if that isn't enough, then shrinks the name until it's
+   at most 2 lines and nothing runs past the label's edge. */
+const LABEL_FULL = { ns: 13.5, cs: 11, wrap: false };
+function setLabelFit(t, f) {
+  t.querySelector(".n").style.fontSize = f.ns + "pt";
+  const c = t.querySelector(".c"); if (c) c.style.fontSize = f.cs + "pt";
+  t.querySelector(".lrow").classList.toggle("wrap", f.wrap);
+}
+function labelFits(l) {
+  const t = l.querySelector(".t"), n = t.querySelector(".n"), st = getComputedStyle(l), lb = l.getBoundingClientRect();
+  const right = lb.right - parseFloat(st.paddingRight) + 1, bottom = lb.bottom - parseFloat(st.paddingBottom) + 1;
+  const lines = Math.round(n.getBoundingClientRect().height / (parseFloat(getComputedStyle(n).fontSize) * 1.08));
+  if (lines > 2) return false;
+  return [...t.querySelectorAll(".n, .nw, .lrow > *, .k")].every((el) => { const r = el.getBoundingClientRect(); return r.right <= right && r.bottom <= bottom; });
+}
+function measureLabel(l) {
+  const t = l.querySelector(".t"), row = t.querySelector(".lrow"), c = t.querySelector(".c"), f = { ...LABEL_FULL };
+  setLabelFit(t, f);
+  const rowOver = () => row.scrollWidth > row.clientWidth + 1;
+  while (c && rowOver() && f.cs > 8) { f.cs -= 0.5; setLabelFit(t, f); }
+  if (rowOver()) { f.wrap = true; setLabelFit(t, f); }
+  while (f.ns > 8 && !labelFits(l)) { f.ns -= 0.5; setLabelFit(t, f); }
+  return f;
+}
+function labelBox(it) {
+  const l = document.createElement("div"); l.className = "label";
+  const qr = document.createElement("div"); qr.className = "qr";
+  l.appendChild(qr); l.appendChild(labelText(it)); return l;
+}
+/* Measure each item once in a hidden copy. Every size of one product + colour gets the smallest fit any of them
+   needs, so a set of labels looks alike. */
+async function labelFitsByProduct(items) {
+  const sheet = $("labelSheet"); sheet.innerHTML = ""; sheet.classList.add("measuring");
+  try {
+    if (document.fonts) await document.fonts.ready;
+    const probe = document.createElement("div"); probe.className = "sheet"; sheet.appendChild(probe);
+    const fit = {};
+    [...new Map(items.map((it) => [it.id, it])).values()].forEach((it) => {
+      const l = labelBox(it); probe.appendChild(l);
+      const f = measureLabel(l), k = it.name + "|" + (it.color || ""), g = fit[k];
+      fit[k] = g ? { ns: Math.min(g.ns, f.ns), cs: Math.min(g.cs, f.cs), wrap: g.wrap || f.wrap } : f;
+      l.remove();
+    });
+    return fit;
+  } finally { sheet.innerHTML = ""; sheet.classList.remove("measuring"); }
+}
+$("printLabelsBtn").addEventListener("click", async () => {
   const want = []; $("labelPicker").querySelectorAll("input").forEach((inp) => { const n = parseInt(inp.value) || 0; const it = S.items.find((i) => i.id === inp.dataset.id); for (let k = 0; k < n; k++) want.push(it); });
   if (!want.length) return toast("Set a quantity for at least one item.", true);
   if (want.length > 600) return toast("That's more than 20 sheets. Print in smaller batches.", true);
+  const fit = await labelFitsByProduct(want);
   const sheet = $("labelSheet"); sheet.innerHTML = "";
   for (let p = 0; p < want.length; p += 30) {
     const pg = document.createElement("div"); pg.className = "sheet";
     want.slice(p, p + 30).forEach((it) => {
-      const l = document.createElement("div"); l.className = "label";
-      const qr = document.createElement("div"); qr.className = "qr";
-      new QRCode(qr, { text: it.sku, width: 79, height: 79, correctLevel: QRCode.CorrectLevel.M });
-      const t = document.createElement("div"); t.className = "t"; t.innerHTML = `<div class="n">${esc(it.name).replace(/\S*-\S*/g, (w) => `<span class="nw">${w}</span>`)}</div><div class="row"><span class="sz">${esc(it.size || "")}</span>${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
-      l.appendChild(qr); l.appendChild(t); pg.appendChild(l);
+      const l = labelBox(it);
+      new QRCode(l.querySelector(".qr"), { text: it.sku, width: 79, height: 79, correctLevel: QRCode.CorrectLevel.M });
+      setLabelFit(l.querySelector(".t"), fit[it.name + "|" + (it.color || "")] || LABEL_FULL);
+      pg.appendChild(l);
     });
     sheet.appendChild(pg);
   }
