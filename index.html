@@ -337,10 +337,13 @@ tr.low td { background: var(--orange-soft); }
   .label { display: flex; align-items: center; gap: 0.08in; padding: 0.06in 0.1in; overflow: hidden; }
   .label .qr { width: 0.82in; height: 0.82in; flex: 0 0 auto; }
   .label .qr img, .label .qr canvas { width: 0.82in !important; height: 0.82in !important; }
-  .label .t { font-family: var(--font); line-height: 1.15; }
-  .label .t .n { font-weight: 700; font-size: 10.5pt; }
-  .label .t .s { font-size: 13pt; font-weight: 700; }
-  .label .t .k { font-size: 8pt; color: #444; }
+  .label .t { font-family: var(--font); line-height: 1.1; min-width: 0; }
+  .label .t .n { font-weight: 800; font-size: 13.5pt; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .label .t .n .nw { white-space: nowrap; }   /* keep "Hi-Vis", "T-Shirt" whole: long names wrap at spaces only */
+  .label .t .row { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; }
+  .label .t .sz { font-weight: 800; font-size: 19pt; line-height: 1; }
+  .label .t .c { font-size: 11pt; font-weight: 600; color: #333; }
+  .label .t .k { font-size: 7pt; color: #666; margin-top: 2px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -2117,7 +2120,7 @@ $("printLabelsBtn").addEventListener("click", () => {
       const l = document.createElement("div"); l.className = "label";
       const qr = document.createElement("div"); qr.className = "qr";
       new QRCode(qr, { text: it.sku, width: 79, height: 79, correctLevel: QRCode.CorrectLevel.M });
-      const t = document.createElement("div"); t.className = "t"; t.innerHTML = `<div class="n">${esc(it.name)}</div><div class="s">${esc([it.color, it.size].filter(Boolean).join(" · "))}</div><div class="k">${esc(it.sku)}</div>`;
+      const t = document.createElement("div"); t.className = "t"; t.innerHTML = `<div class="n">${esc(it.name).replace(/\S*-\S*/g, (w) => `<span class="nw">${w}</span>`)}</div><div class="row"><span class="sz">${esc(it.size || "")}</span>${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
       l.appendChild(qr); l.appendChild(t); pg.appendChild(l);
     });
     sheet.appendChild(pg);

@@ -125,7 +125,7 @@ In the app, Admin tab:
 1. **Departments** — add each department that gets charged back.
 2. **Items** — use "Add one item per colour and size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, colours `Lime, Orange`, sizes `S, M, L, XL, 2XL, 3XL`). Leave colours blank for a product that only comes in one. Set the unit cost and reorder threshold.
 3. **Users** — give each person a department (the **Department** button), so check out fills it in for them.
-4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling).
+4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling). Each label shows the item name in large bold type (long names wrap between words, so "Long Sleeve / Hi-Vis T-Shirt"), the size large under it with the colour smaller beside it, and the SKU small at the bottom.
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
 
 ## Packing slips and invoices
@@ -292,7 +292,7 @@ Each colour of a product is its own item, just like each size: its own SKU, QR l
 
 - **Picking an item.** *Pick from list* on Check out, and the item search on Receive, show one block per product (items with the same name). Under it is a row of size buttons for each colour, each with its on-hand count (orange at 0). A product with one item per colour, like a one-size beanie, shows a single row of colour buttons instead. Search matches every word typed against name, colour, size, SKU and category, so `grey beanie` or `vest orange xl` both work. Scanning a label is unchanged.
 - **Adding items.** **Admin → Items → Add one item per colour and size** makes every combination at once, with SKUs `<prefix>-<COLOUR>-<SIZE>` (e.g. `RX-BN-GREY-OS`), or `<prefix>-<SIZE>` with no colours. It shows how many items it will make before you save. *Add item* and *Edit* have a Colour box that suggests colours already in use. Keep the name identical across colours so they group.
-- **Where it shows.** Items are named "Beanie – Grey – OS" everywhere one appears: the cart, Inventory, recent activity, reports and their CSVs (in the Item column), coding reports, low-stock emails and vendor matches. Admin → Items has its own Colour column, and labels print colour and size together ("Grey · OS").
+- **Where it shows.** Items are named "Beanie – Grey – OS" everywhere one appears: the cart, Inventory, recent activity, reports and their CSVs (in the Item column), coding reports, low-stock emails and vendor matches. Admin → Items has its own Colour column, and labels print the size large with the colour smaller beside it.
 - **Reading documents.** The document reader is given each item's colour and only matches a line when the colour agrees.
 - **Colours already in names.** The SQL moved a colour at the start or end of a name into the field ("Black Beanie", "Beanie - Grey" and "Beanie (Grey)" all become Beanie + colour), and its last query lists every item with a colour. Fix any it got wrong under Admin → Items → Edit.
 
