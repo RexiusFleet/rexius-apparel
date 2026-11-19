@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119031034">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119031409">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2121,7 +2121,8 @@ $("labelsClearBtn").addEventListener("click", () => $("labelPicker").querySelect
 $("labelsOneBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 1)));
 /* Label wording, for labels only (item names and sizes in the app don't change) */
 const labelName = (n) => n.replace(/\bt-?shirt\b/gi, "Tee").replace(/\b(short|long)-sleeve\b/gi, "$1 Sleeve").replace(/ - /g, ": ");   // "High-Vis Tee: Short Sleeve"
-const labelSize = (z) => (/^(os|one size)$/i.test(z || "") ? "" : z || "");   // one-size items print just their colour
+const ONE_SIZE = /^\s*(o\/?s|osfa|osfm|one|one[ -]?size( fits (all|most))?)\s*$/i;   // OS, O/S, OSFA, One, One Size, One-Size Fits All…
+const labelSize = (z) => (ONE_SIZE.test(z || "") ? "" : z || "");   // one-size items print just their colour
 function labelText(it) {
   const t = document.createElement("div"); t.className = "t";
   t.innerHTML = `<div class="n">${esc(labelName(it.name)).replace(/\b(?:short|long) sleeve\b|\S*-\S*/gi, (w) => `<span class="nw">${w}</span>`)}</div><div class="lrow">${labelSize(it.size) ? `<span class="sz">${esc(labelSize(it.size))}</span>` : ""}${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
