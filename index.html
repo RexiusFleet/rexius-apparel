@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119030803">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119031034">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -328,7 +328,7 @@ tr.low td { background: var(--orange-soft); }
 #labelSheet .qr img, #labelSheet .qr canvas { width: 0.82in !important; height: 0.82in !important; }
 #labelSheet .t { font-family: var(--font); line-height: 1.08; min-width: 0; flex: 1 1 auto; color: #000; }
 #labelSheet .t .n { font-weight: 800; font-size: 13.5pt; overflow-wrap: anywhere; }
-#labelSheet .t .n .nw { white-space: nowrap; }   /* keep "Hi-Vis", "Tee -" and "Short Sleeve" whole: names wrap at other spaces */
+#labelSheet .t .n .nw { white-space: nowrap; }   /* keep "Hi-Vis" and "Short Sleeve" whole: names wrap at other spaces */
 #labelSheet .t .lrow { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; margin-top: 2px; }
 #labelSheet .t .lrow.wrap { flex-wrap: wrap; }
 #labelSheet .t .sz { font-weight: 800; font-size: 19pt; line-height: 1; }
@@ -2120,11 +2120,11 @@ function renderLabelPicker() {
 $("labelsClearBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 0)));
 $("labelsOneBtn").addEventListener("click", () => $("labelPicker").querySelectorAll("input").forEach((i) => (i.value = 1)));
 /* Label wording, for labels only (item names and sizes in the app don't change) */
-const labelName = (n) => n.replace(/\bt-?shirt\b/gi, "Tee").replace(/\b(short|long)-sleeve\b/gi, "$1 Sleeve");
+const labelName = (n) => n.replace(/\bt-?shirt\b/gi, "Tee").replace(/\b(short|long)-sleeve\b/gi, "$1 Sleeve").replace(/ - /g, ": ");   // "High-Vis Tee: Short Sleeve"
 const labelSize = (z) => (/^(os|one size)$/i.test(z || "") ? "" : z || "");   // one-size items print just their colour
 function labelText(it) {
   const t = document.createElement("div"); t.className = "t";
-  t.innerHTML = `<div class="n">${esc(labelName(it.name)).replace(/\b(?:short|long) sleeve\b|\S+ -(?= )|\S*-\S*/gi, (w) => `<span class="nw">${w}</span>`)}</div><div class="lrow">${labelSize(it.size) ? `<span class="sz">${esc(labelSize(it.size))}</span>` : ""}${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
+  t.innerHTML = `<div class="n">${esc(labelName(it.name)).replace(/\b(?:short|long) sleeve\b|\S*-\S*/gi, (w) => `<span class="nw">${w}</span>`)}</div><div class="lrow">${labelSize(it.size) ? `<span class="sz">${esc(labelSize(it.size))}</span>` : ""}${it.color ? `<span class="c">${esc(it.color)}</span>` : ""}</div><div class="k">${esc(it.sku)}</div>`;
   return t;
 }
 /* Auto-fit: full size is name 13.5pt, colour 11pt. A label that won't fit first shrinks the colour (to 8pt) so it
@@ -2423,7 +2423,7 @@ async function checkForUpdate() {
   try {
     const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return;
-    const live = ((await r.text()).match(/<meta name="app-version" content="20261119030803"]+)"/) || [])[1];
+    const live = ((await r.text()).match(/<meta name="app-version"\s+content="([^"]+)"/) || [])[1];
     if (live && live !== "unstamped" && live !== APP_VERSION) { newVersion = live; offerUpdate(); }
   } catch (_) { /* offline or GitHub hiccup: try again later */ }
 }

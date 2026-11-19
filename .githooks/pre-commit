@@ -2,8 +2,13 @@
 # Stamp index.html with a new app-version whenever it's in a commit, so open copies of the app
 # (phone home screen, Mac dock) notice the push and reload themselves. Turned on once per clone with:
 #   git config core.hooksPath .githooks
+# Only the <meta> tag at the start of a line is touched, never code that mentions it.
 if git diff --cached --name-only | grep -qx 'index.html'; then
   stamp=$(date -u +%Y%m%d%H%M%S)
-  sed -i.bak -E "s/(<meta name=\"app-version\" content=\")[^\"]*\"/\1$stamp\"/" index.html && rm -f index.html.bak
+  sed -i.bak -E "s/^(<meta name=\"app-version\" content=\")[^\"]*\"/\1$stamp\"/" index.html && rm -f index.html.bak
+  if [ "$(grep -c "content=\"$stamp\"" index.html)" != "1" ]; then
+    echo "pre-commit: expected exactly one app-version stamp in index.html; not committing." >&2
+    exit 1
+  fi
   git add index.html
 fi

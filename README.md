@@ -136,8 +136,8 @@ In the app, Admin tab:
 2. **Items** — use "Add one item per colour and size" for each product (e.g. name "Hi-Vis Class 2 Vest", prefix `HV-VEST-C2`, colours `Lime, Orange`, sizes `S, M, L, XL, 2XL, 3XL`). Leave colours blank for a product that only comes in one. Set the unit cost and reorder threshold.
 3. **Users** — give each person a department (the **Department** button), so check out fills it in for them.
 4. **Print labels** — print a QR label for each item. **Set all to 1** fills in one of each, which is also the quick way to reprint a full set when labels get worn (Avery 5160, 30 per sheet, print at 100% with no scaling). Each label shows the item name in large bold type, the size large under it with the colour smaller beside it, and the SKU small at the bottom.
-   - *Wording, on labels only:* "T-Shirt" prints as **Tee**, and a one-size item (size OS or One Size) prints no size, just its colour. Item names, sizes and SKUs in the app don't change, so labels already printed still scan.
-   - *Line breaks:* names wrap only at spaces, never inside "Hi-Vis", "Short Sleeve" or "Long Sleeve", and a dash stays at the end of the line before it, so "High-Vis Tee - / Short Sleeve".
+   - *Wording, on labels only:* "T-Shirt" prints as **Tee**, a " - " in a name prints as a colon ("High-Vis Tee: Short Sleeve"), and a one-size item (size OS or One Size) prints no size, just its colour. Item names, sizes and SKUs in the app don't change, so labels already printed still scan.
+   - *Line breaks:* names wrap only at spaces, never inside "Hi-Vis", "Short Sleeve" or "Long Sleeve", so "High-Vis Tee: / Short Sleeve".
    - *Auto-fit:* full size is name 13.5pt and colour 11pt. Before printing, the app measures each item in a hidden copy. If a label won't fit, it first shrinks the colour (down to 8pt) so it stays beside the size, puts it under the size only if that isn't enough, then shrinks the name until it's at most two lines and nothing runs off the label. Every size of one product and colour gets the same type sizes, so a set of labels looks alike.
 5. **Receive** tab — enter your current stock on hand for each item so the counts start accurate.
 
