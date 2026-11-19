@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119032332">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119032759">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -386,7 +386,7 @@ tr.low td { background: var(--orange-soft); }
     <button data-view="reports" id="reportsTab" style="display:none">Reports</button>
     <button data-view="admin" id="adminTab" style="display:none">Admin</button>
   </nav>
-  <div class="test-banner" id="testBanner" style="display:none"><span><strong>Test mode.</strong> Only test data is shown, and nothing here counts toward real inventory or chargebacks.</span><button class="btn small" id="testOffBtn">Turn off</button></div>
+  <div class="test-banner" id="testBanner" style="display:none"><span id="testBannerText"></span><span class="btn-row" style="margin:0"><button class="btn small" id="viewAsOffBtn" style="display:none">Back to admin</button><button class="btn small" id="testOffBtn">Turn off</button></span></div>
 
   <main>
     <!-- ---------- CHECKOUT ---------- -->
@@ -611,6 +611,9 @@ tr.low td { background: var(--orange-soft); }
           <p class="hint">Test items and departments (marked <span class="pill test">Test</span> in the Admin lists) stay out of check out, receiving, inventory, labels, activity and reports. Turn on test mode to use them: every screen switches over to test data only, so you can try receiving, invoice reading, labels, check out and reports without touching real numbers. Check outs are charged to the test department. Anything you add while test mode is on is a test record. It applies to this browser tab only and switches off when you sign out or close the tab. Checking a test item out down to its reorder point emails a [TEST] low-stock alert to you only.</p>
           <p class="hint" id="testSummary"></p>
           <div class="btn-row"><button class="btn primary" id="testToggleBtn">Turn on test mode</button><button class="btn danger" id="testClearBtn">Clear test activity</button><a class="btn" href="testing/test-packing-slip.pdf" download="test-packing-slip.pdf">Sample packing slip</a><a class="btn" href="testing/test-invoice.pdf" download="test-invoice.pdf">Sample invoice</a></div>
+          <h3 style="margin-top:20px">View as a Check Out user</h3>
+          <p class="hint">See the app exactly as Check Out users do: only the Check out and Inventory tabs, no costs or totals, and no Recent activity. It turns test mode on, so anything you check out is test data. Your account stays an admin underneath, so this shows their screens, not their database permissions. <strong>Back to admin</strong> in the orange bar ends it; it also ends when you sign out or close the tab.</p>
+          <div class="btn-row"><button class="btn" id="viewAsBtn">View as Check Out user</button></div>
           <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items and departments are kept for next time.</p>
         </div>
       </div>
@@ -642,7 +645,7 @@ const S = {
   session: null, me: null, role: null,
   items: [], inventory: [], departments: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
   cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
-  report: null, testMode: false, testIds: new Set(), coFor: null, activity: []
+  report: null, testMode: false, viewAsCheckout: false, testIds: new Set(), coFor: null, activity: []
 };
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
@@ -656,7 +659,8 @@ const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "2xl", "3xl", "4xl", "5xl"
 const sizeRank = (sz) => { const k = String(sz || "").toLowerCase().replace(/\s+/g, "").replace(/^xxl$/, "2xl").replace(/^xxxl$/, "3xl"); const i = SIZE_ORDER.indexOf(k); return i < 0 ? 100 : i; };
 const bySize = (a, b) => sizeRank(a.size) - sizeRank(b.size) || String(a.size || "").localeCompare(String(b.size || ""), undefined, { numeric: true });
 const fmtWhen = (iso) => { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
-const isAdmin = () => S.role === "admin";
+const realAdmin = () => S.role === "admin";                   // the account's actual role
+const isAdmin = () => realAdmin() && !S.viewAsCheckout;       // what the screens show: an admin viewing as Check Out sees the Check Out app
 // Departments are known by number first: "10 (Admin)", or just the name when there's no code.
 const deptLabel = (d) => d ? (String(d.code || "").trim() ? `${String(d.code).trim()} (${d.name})` : d.name) : "";
 const byDeptCode = (a, b) => (!String(a.code || "").trim() - !String(b.code || "").trim()) || String(a.code || "").localeCompare(String(b.code || ""), undefined, { numeric: true }) || a.name.localeCompare(b.name);
@@ -666,6 +670,7 @@ const userName = (uid) => (S.users.find((u) => u.user_id === uid) || {}).display
 const inScope = (itemId) => S.testIds.has(itemId) === S.testMode;   // by id, because inventory rows don't carry the flag
 const rowInScope = (row) => !!row.is_test === S.testMode;
 const TEST_MODE_KEY = "apparel.testMode";
+const VIEW_AS_KEY = "apparel.viewAsCheckout";
 
 let toastTimer;
 function toast(msg, isErr = false) {
@@ -710,8 +715,8 @@ sb.auth.onAuthStateChange((_evt, session) => {
 
 function showLogin() {
   $("appShell").style.display = "none"; $("loginView").style.display = "flex";
-  S.me = null; S.role = null; S.testMode = false;
-  try { sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
+  S.me = null; S.role = null; S.testMode = false; S.viewAsCheckout = false;
+  try { sessionStorage.removeItem(TEST_MODE_KEY); sessionStorage.removeItem(VIEW_AS_KEY); } catch (_) {}
 }
 
 async function boot() {
@@ -722,13 +727,19 @@ async function boot() {
     await sb.auth.signOut(); return;
   }
   S.me = data; S.role = data.role;
-  try { S.testMode = isAdmin() && sessionStorage.getItem(TEST_MODE_KEY) === "1"; } catch (_) { S.testMode = false; }
+  try { S.testMode = realAdmin() && sessionStorage.getItem(TEST_MODE_KEY) === "1"; } catch (_) { S.testMode = false; }
+  try { S.viewAsCheckout = S.testMode && sessionStorage.getItem(VIEW_AS_KEY) === "1"; } catch (_) { S.viewAsCheckout = false; }
   $("whoName").textContent = data.display_name || S.session.user.email;
-  ["receiveTab", "reportsTab", "adminTab"].forEach((id) => { $(id).style.display = isAdmin() ? "" : "none"; });   // admin-only tabs
-  document.body.classList.toggle("role-checkout", !isAdmin());   // hides every .admin-only element (costs, totals, recent activity)
+  applyRole();
   $("loginView").style.display = "none"; $("appShell").style.display = "flex";
   await loadRefs();
   showView("checkout");
+}
+
+// Shows or hides everything that depends on the role the screens are showing (see isAdmin).
+function applyRole() {
+  ["receiveTab", "reportsTab", "adminTab"].forEach((id) => { $(id).style.display = isAdmin() ? "" : "none"; });   // admin-only tabs
+  document.body.classList.toggle("role-checkout", !isAdmin());   // hides every .admin-only element (costs, totals, recent activity)
 }
 
 /* =========================================================
@@ -1992,6 +2003,10 @@ async function deleteRecord(kind, id) {
    ========================================================= */
 function renderTestMode() {
   $("testBanner").style.display = S.testMode ? "" : "none";
+  $("testBannerText").innerHTML = S.viewAsCheckout
+    ? "<strong>Viewing as a Check Out user.</strong> Test mode is on, so nothing here counts toward real inventory or chargebacks."
+    : "<strong>Test mode.</strong> Only test data is shown, and nothing here counts toward real inventory or chargebacks.";
+  $("viewAsOffBtn").style.display = S.viewAsCheckout ? "" : "none";
   $("aiTestHint").style.display = S.testMode ? "" : "none";
   $("testToggleBtn").textContent = S.testMode ? "Turn off test mode" : "Turn on test mode";
   const items = [...new Set(S.items.filter((i) => S.testIds.has(i.id)).map((i) => i.name))];
@@ -1999,8 +2014,9 @@ function renderTestMode() {
   $("testSummary").textContent = `Test items: ${items.length ? `${items.join(", ")} (${S.testIds.size} in all)` : "none yet"}. Test departments: ${depts.join(", ") || "none yet"}.`;
 }
 async function setTestMode(on) {
-  S.testMode = on && isAdmin();
+  S.testMode = on && realAdmin();
   try { if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY); } catch (_) {}
+  if (!S.testMode && S.viewAsCheckout) return setViewAs(false, false);   // viewing as Check Out only happens in test mode
   // Nothing carries over, so a cart, half-done receive or report from one side can't be finished on the other.
   S.cart = []; S.coFor = null; S.rcvItem = null; S.ai = null; S.report = null;
   $("pickArea").style.display = "none"; $("rcvList").style.display = "none";
@@ -2013,6 +2029,25 @@ async function setTestMode(on) {
 }
 $("testToggleBtn").addEventListener("click", () => setTestMode(!S.testMode));
 $("testOffBtn").addEventListener("click", () => setTestMode(false));
+// View as a Check Out user: the screens drop to the Check Out app, always in test mode. Back to admin keeps test mode on.
+async function setViewAs(on, keepTest = true) {
+  if (!realAdmin()) return;
+  S.viewAsCheckout = on;
+  if (on) S.testMode = true; else if (!keepTest) S.testMode = false;
+  try {
+    if (S.viewAsCheckout) sessionStorage.setItem(VIEW_AS_KEY, "1"); else sessionStorage.removeItem(VIEW_AS_KEY);
+    if (S.testMode) sessionStorage.setItem(TEST_MODE_KEY, "1"); else sessionStorage.removeItem(TEST_MODE_KEY);
+  } catch (_) {}
+  S.cart = []; S.coFor = null; S.rcvItem = null; S.ai = null; S.report = null;
+  $("pickArea").style.display = "none";
+  applyRole();
+  await loadRefs(); populateReportDepts();
+  await showView(on ? "checkout" : keepTest ? "admin" : "checkout");
+  if (!on && keepTest) document.querySelector('#adminNav [data-sub="test"]').click();   // back where the switch is
+  toast(on ? "Viewing as a Check Out user, in test mode" : keepTest ? "Back to admin, still in test mode" : "Back to admin, test mode off");
+}
+$("viewAsBtn").addEventListener("click", () => setViewAs(true));
+$("viewAsOffBtn").addEventListener("click", () => setViewAs(false));
 $("testClearBtn").addEventListener("click", async () => {
   const ids = [...S.testIds], invs = S.invoices.filter((v) => v.is_test);
   const matches = S.aliases.filter((a) => S.testIds.has(a.item_id)).length;

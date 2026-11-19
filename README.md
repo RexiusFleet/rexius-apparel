@@ -219,6 +219,8 @@ Outside test mode, real reports, inventory totals and low-stock counts never inc
 
 **Anything you add while test mode is on is a test record**: items (including one item per size), departments and documents. Anything added outside test mode is real. The flag is only set when a record is created, so a real item or department with history can never be hidden from reports later.
 
+**View as a Check Out user** (Admin → Test mode) shows an admin the app exactly as Check Out users see it: only the Check out and Inventory tabs, no costs or totals, no *Checked out by* picker and no Recent activity. It always runs in test mode, so check outs made this way are test data, charged to the test department. The orange bar says *Viewing as a Check Out user*. **Back to admin** returns to Admin → Test mode with test mode still on, and *Turn off* ends both. Like test mode, it lasts for that browser tab only and ends on sign out. Only the page changes: the database still treats you as an admin, so this checks what Check Out users see, not their database permissions. To check those as well, sign in with a real login whose role is Checkout.
+
 **Clear test activity** (Admin → Test mode) deletes every test transaction, test document (with its file), test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round of testing starts from zero. Test departments are kept for next time; delete extra ones by hand (deactivate, then delete) after clearing. Real data is not touched.
 
 Setup, once, in this order:
