@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119031409">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119032332">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -143,6 +143,7 @@ nav.tabs .badge { display: inline-block; min-width: 20px; padding: 0 6px; margin
 
 main { flex: 1; padding: 18px 16px calc(28px + env(safe-area-inset-bottom, 0px)); max-width: 1100px; width: 100%; margin: 0 auto; }
 .view { display: none; }
+.role-checkout .admin-only { display: none !important; }   /* costs, totals and activity are for admins */
 .view.active { display: block; }
 .view-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .sub { color: var(--mute); font-size: 15px; }
@@ -419,7 +420,7 @@ tr.low td { background: var(--orange-soft); }
 
       <div class="panel">
         <div class="field"><label for="coNotes">Notes (optional)</label><input id="coNotes" placeholder="e.g. replacement for torn vest"></div>
-        <div class="summary"><span id="cartCount">0 items</span><span id="cartValue">$0.00</span></div>
+        <div class="summary"><span id="cartCount">0 items</span><span id="cartValue" class="admin-only">$0.00</span></div>
         <button class="btn primary big block" id="confirmCheckoutBtn" disabled>Confirm checkout</button>
       </div>
     </section>
@@ -482,16 +483,16 @@ tr.low td { background: var(--orange-soft); }
     <!-- ---------- INVENTORY ---------- -->
     <section class="view" id="view-inventory">
       <div class="view-head"><h2>Inventory</h2><button class="btn small" id="refreshInvBtn">Refresh</button></div>
-      <div class="stats" id="invStats"></div>
+      <div class="stats admin-only" id="invStats"></div>
       <div class="panel quiet">
         <div class="row">
           <div class="field"><label for="invSearch">Search</label><input id="invSearch" placeholder="Name, colour, size or SKU" autocomplete="off"></div>
           <div class="field narrow"><label for="invCat">Category</label><select id="invCat"><option value="">All</option></select></div>
           <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option></select></div>
         </div>
-        <div class="table-wrap"><table id="invTable"><thead><tr><th>Item</th><th>Size</th><th>SKU</th><th class="num">On hand</th><th class="num">Reorder at</th><th class="num">Unit cost</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table id="invTable"><thead><tr><th>Item</th><th>Size</th><th>SKU</th><th class="num">On hand</th><th class="num">Reorder at</th><th class="num admin-only">Unit cost</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
-      <div class="panel quiet">
+      <div class="panel quiet admin-only">
         <h3>Recent activity</h3>
         <div class="table-wrap"><table id="actTable"><thead><tr><th>When</th><th>What</th><th>Item</th><th class="num">Qty</th><th>Details</th><th>By</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
@@ -724,6 +725,7 @@ async function boot() {
   try { S.testMode = isAdmin() && sessionStorage.getItem(TEST_MODE_KEY) === "1"; } catch (_) { S.testMode = false; }
   $("whoName").textContent = data.display_name || S.session.user.email;
   ["receiveTab", "reportsTab", "adminTab"].forEach((id) => { $(id).style.display = isAdmin() ? "" : "none"; });   // admin-only tabs
+  document.body.classList.toggle("role-checkout", !isAdmin());   // hides every .admin-only element (costs, totals, recent activity)
   $("loginView").style.display = "none"; $("appShell").style.display = "flex";
   await loadRefs();
   showView("checkout");
@@ -891,7 +893,7 @@ function renderCart() {
     S.cart.forEach((l, idx) => {
       const oh = onHandOf(l.item.id), wanted = S.cart.reduce((a, x) => a + (x.item.id === l.item.id ? x.qty : 0), 0);   // across every line of this item
       const d = document.createElement("div"); d.className = "cart-line";
-      d.innerHTML = `<div><div class="name">${esc(itemLabel(l.item))}</div><div class="meta">${esc(l.item.sku)} · ${money(l.item.unit_cost)} each · ${oh} on hand${wanted > oh ? ' · <span style="color:var(--orange);font-weight:600">more than on hand</span>' : ""}</div><button class="remove" data-i="${idx}">Remove</button></div>
+      d.innerHTML = `<div><div class="name">${esc(itemLabel(l.item))}</div><div class="meta">${esc(l.item.sku)}${isAdmin() ? ` · ${money(l.item.unit_cost)} each` : ""} · ${oh} on hand${wanted > oh ? ' · <span style="color:var(--orange);font-weight:600">more than on hand</span>' : ""}</div><button class="remove" data-i="${idx}">Remove</button></div>
         <div class="qty"><button data-i="${idx}" data-d="-1" aria-label="Less">−</button><input type="number" min="1" value="${l.qty}" data-i="${idx}" inputmode="numeric" aria-label="Quantity"><button data-i="${idx}" data-d="1" aria-label="More">+</button></div>
         <div class="line-dept"><label for="lineDept${idx}">Charge to</label><select id="lineDept${idx}" data-i="${idx}"${l.dept ? "" : ' class="unset"'}>${deptOpts(l.dept)}</select></div>`;
       el.appendChild(d);
@@ -1800,7 +1802,7 @@ function renderInventory() {
   let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock));
   rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
   const tb = $("invTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
     : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => { const b = e.target.closest("[data-adjust]"); if (b) openAdjust(b.dataset.adjust); });
@@ -1821,6 +1823,7 @@ function openAdjust(id) {
 }
 
 async function loadActivity() {
+  if (!isAdmin()) return;   // checkout users don't see recent activity
   const q = scopeToMode(sb.from("transactions").select("id, type, qty_change, unit_cost, notes, created_at, performed_by, entered_by, invoice_id, report_id, item:items(name,color,size,sku), department:departments(id,name,code), invoice:invoices(vendor,invoice_no,order_no,doc_type)").order("created_at", { ascending: false }).limit(60));
   const { data, error } = q ? await q : { data: [] };
   if (error) return fail(error, "Couldn't load activity");

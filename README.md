@@ -70,14 +70,18 @@ What it sets up:
 
 | Who | Can |
 |---|---|
-| Active member with role `checkout` | read everything (needed for on-hand counts); record checkout transactions stamped with their own id |
+| Active member with role `checkout` | read items, departments and on-hand counts, and only their own check outs; record checkout transactions stamped with their own id |
 | Active admin, recording | any transaction for any user (a check out for someone else); `entered_by` always records the admin |
 | Active admin | all of the above plus receive/adjust transactions, edit and delete items, departments and transactions, and insert/update/delete rows in `apparel.app_users` (never their own row) |
 | Anyone else (incl. other-app logins) | nothing |
 
 The second migration, `supabase/migrations/20261027150000_apparel_checkout_role_lockdown.sql`, is what narrows the checkout role to the first row above. Run it after the first one, the same way. In the app, checkout users see only the **Check out** and **Inventory** tabs; Receive, Reports and Admin are hidden.
 
-`apparel.inventory` is a view with `security_invoker`, so it inherits the item/transaction policies. The migration also creates two helpers that only the service role can call (`apparel.auth_user_id_by_email`, `apparel.admin_list_users`); the function below relies on them, so run the migration before deploying.
+**What checkout users don't see.** No costs or totals anywhere: no price per item or total in the check out cart, no Unit cost column, and none of the three summary boxes on Inventory (low-stock count, units on hand, inventory value). No **Recent activity** either. Their Inventory tab is just the item list with search, category, *Low stock only*, On hand, Reorder at and the **Low** tag. On the page these are the elements marked `admin-only`, hidden whenever the body has the `role-checkout` class.
+
+**Own check outs only.** `supabase/migrations/20261118220000_checkout_users_own_activity.sql` limits what checkout users can read in `apparel.transactions` to check outs recorded as theirs; admins still read everything. On-hand counts still need every row, so the original inventory view was renamed `apparel.inventory_all`, runs as its owner and can't be read directly, and `apparel.inventory` is now a view over it that returns rows only to active app users. Item costs stay readable in the database, because check out uses them. Run the SQL before pushing the page.
+
+`apparel.inventory` gives every app user full on-hand counts (see *Own check outs only* above), and nobody else gets any rows. The migration also creates two helpers that only the service role can call (`apparel.auth_user_id_by_email`, `apparel.admin_list_users`); the function below relies on them, so run the migration before deploying.
 
 ### 2. Deploy the `admin-users` Edge Function (Supabase CLI)
 
