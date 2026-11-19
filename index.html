@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119034026">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119045857">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -719,7 +719,18 @@ async function signIn() {
   const { error } = await sb.auth.signInWithPassword({ email: $("loginEmail").value.trim(), password: $("loginPass").value });
   if (error) $("loginMsg").textContent = error.message === "Invalid login credentials" ? "That email and password didn't match." : error.message;
 }
-$("signOutBtn").addEventListener("click", async () => { await stopScanner(); await sb.auth.signOut(); });
+// Signs out this device only. If Supabase can't end the session (it has already expired or been
+// revoked), the saved login is dropped anyway, so the button always gets back to the sign-in screen.
+$("signOutBtn").addEventListener("click", async () => {
+  await stopScanner();
+  let error;
+  try { ({ error } = await sb.auth.signOut({ scope: "local" })); } catch (e) { error = e; }
+  if (error) {
+    console.warn("Sign out failed; clearing the saved login", error);
+    try { localStorage.removeItem(`sb-${new URL(SUPABASE_URL).hostname.split(".")[0]}-auth-token`); } catch (_) {}
+    S.session = null; showLogin();
+  }
+});
 
 sb.auth.onAuthStateChange((_evt, session) => {
   S.session = session;
