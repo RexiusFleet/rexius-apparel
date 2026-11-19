@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119032759">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261119034026">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -248,6 +248,18 @@ tr.low td { background: var(--orange-soft); }
 .picklist .pick-sizes button:last-child { border-bottom: 1.5px solid var(--btn-border); }
 .picklist .pick-sizes button .meta { font-size: 12px; font-weight: 400; }
 .picklist .pick-sizes button.out .meta { color: var(--orange); }
+/* check out summary (bottom of Check out, and the success note) */
+.co-sum-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.co-sum-head h3 { margin: 0; }
+.co-sum-group { border-top: 1px solid var(--line); padding: 8px 0; }
+.co-sum-group:first-of-type { border-top: 0; }
+.co-sum-dept { font-weight: 700; display: flex; justify-content: space-between; gap: 10px; }
+.co-sum-dept.unset { color: var(--orange); }
+.co-sum-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0 2px 12px; }
+.co-sum-line .q { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.co-done { border-left: 4px solid var(--green); background: var(--brand-soft); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+.co-done strong { font-size: 18px; }
+#cartPanel.flash { outline: 3px solid var(--orange); outline-offset: 2px; transition: outline-color .6s; }
 .summary { display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 600; padding: 12px 0 4px; }
 
 /* stat strip */
@@ -420,6 +432,7 @@ tr.low td { background: var(--orange-soft); }
 
       <div class="panel">
         <div class="field"><label for="coNotes">Notes (optional)</label><input id="coNotes" placeholder="e.g. replacement for torn vest"></div>
+        <div id="coSummary" style="display:none"></div>
         <div class="summary"><span id="cartCount">0 items</span><span id="cartValue" class="admin-only">$0.00</span></div>
         <button class="btn primary big block" id="confirmCheckoutBtn" disabled>Confirm checkout</button>
       </div>
@@ -915,7 +928,33 @@ function renderCart() {
   $("cartCount").textContent = `${count} item${count === 1 ? "" : "s"}`;
   $("cartValue").textContent = money(value);
   $("confirmCheckoutBtn").disabled = !(S.cart.length && S.cart.every((l) => l.dept));
-  renderDeptHint();
+  renderDeptHint(); renderCheckoutSummary();
+}
+// The check out, item by item under the department each is charged to. Used at the bottom of
+// Check out before confirming, and in the note that confirms it went through.
+function checkoutSummaryHtml(lines) {
+  const groups = [];
+  lines.forEach((l) => { let g = groups.find((x) => x.dept === l.dept); if (!g) groups.push(g = { dept: l.dept, lines: [] }); g.lines.push(l); });
+  groups.sort((a, b) => (!a.dept - !b.dept) || byDeptCode(S.departments.find((d) => d.id === a.dept) || {}, S.departments.find((d) => d.id === b.dept) || {}));
+  return groups.map((g) => {
+    const d = S.departments.find((x) => x.id === g.dept), n = g.lines.reduce((a, l) => a + l.qty, 0);
+    const cost = g.lines.reduce((a, l) => a + l.qty * Number(l.item.unit_cost || 0), 0);
+    return `<div class="co-sum-group"><div class="co-sum-dept${d ? "" : " unset"}"><span>${d ? "Charged to " + esc(deptLabel(d)) : "No department chosen yet"}</span>${isAdmin() ? `<span>${money(cost)}</span>` : `<span class="sub">${n} item${n === 1 ? "" : "s"}</span>`}</div>
+      ${g.lines.map((l) => `<div class="co-sum-line"><span>${esc(itemLabel(l.item))}</span><span class="q">× ${l.qty}</span></div>`).join("")}</div>`;
+  }).join("");
+}
+function renderCheckoutSummary() {
+  const el = $("coSummary");
+  el.style.display = S.cart.length ? "" : "none";
+  if (!S.cart.length) return (el.innerHTML = "");
+  const other = checkoutFor();
+  el.innerHTML = `<div class="co-sum-head"><h3>Summary</h3><button class="btn small" id="coChangeBtn" type="button">Make changes</button></div>
+    ${other ? `<p class="hint" style="margin:0 0 6px">For <strong>${esc(other.display_name || "this user")}</strong>, entered by you.</p>` : ""}
+    ${checkoutSummaryHtml(S.cart)}`;
+  $("coChangeBtn").addEventListener("click", () => {
+    const p = $("cartPanel"); p.scrollIntoView({ behavior: "smooth", block: "start" });
+    p.classList.add("flash"); setTimeout(() => p.classList.remove("flash"), 1200);
+  });
 }
 // Shown when there's no department to fill in, so each item needs one chosen.
 function renderDeptHint() {
@@ -987,12 +1026,17 @@ $("confirmCheckoutBtn").addEventListener("click", async () => {
   }));
   const { error } = await sb.from("transactions").insert(rows);
   if (error) { btn.disabled = false; return fail(error, "Checkout failed"); }
-  const n = S.cart.reduce((a, l) => a + l.qty, 0), depts = [...new Set(S.cart.map((l) => l.dept))];
-  const to = depts.length === 1 ? deptLabel(S.departments.find((d) => d.id === depts[0])) || "1 department" : `${depts.length} departments`;
-  const other = checkoutFor();
-  toast(`Checked out ${n} item${n === 1 ? "" : "s"}${other ? ` for ${other.display_name || "them"}` : ""} to ${to}`);
+  const done = S.cart.map((l) => ({ ...l })), other = checkoutFor(), notes = $("coNotes").value.trim();
+  const n = done.reduce((a, l) => a + l.qty, 0), total = done.reduce((a, l) => a + l.qty * Number(l.item.unit_cost || 0), 0);
   S.cart = []; S.coFor = null; $("coNotes").value = ""; renderCoFor();
   await refreshInventory(); renderCart(); window.scrollTo(0, 0);
+  // Stays until closed, so there's no doubt it went through.
+  openModal(`<div class="co-done"><strong>✓ Checked out</strong><div class="sub">${n} item${n === 1 ? "" : "s"}${other ? ` for ${esc(other.display_name || "this user")}` : ""} · ${esc(fmtWhen(new Date().toISOString()))}</div></div>
+    ${checkoutSummaryHtml(done)}
+    ${notes ? `<p class="hint" style="margin-top:8px">Notes: ${esc(notes)}</p>` : ""}
+    ${isAdmin() ? `<div class="summary"><span>Total</span><span>${money(total)}</span></div>` : ""}
+    <p class="hint" style="margin-top:8px">${isAdmin() ? "To fix it, use Edit or Undo in Inventory → Recent activity." : "If anything is wrong, let an admin know and they can fix it."}</p>
+    <div class="btn-row"><button class="btn primary block" onclick="closeModal()">Done</button></div>`);
 });
 
 /* =========================================================
