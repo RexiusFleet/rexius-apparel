@@ -37,7 +37,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 
 ## How changes go live
 
-- **Page:** commit and push to `main`, but only when the owner says so. Afterwards, ask them to hard refresh (Cmd+Shift+R).
+- **Page:** commit and push to `main`, but only when the owner says so. Open apps update themselves within about 5 minutes: the `.githooks/pre-commit` hook stamps `<meta name="app-version">` on every commit that changes `index.html` (needs `git config core.hooksPath .githooks` once per clone), and the page reloads when the live stamp differs. Never set the stamp by hand.
 - **SQL:** the owner pastes the file into Supabase's SQL Editor and runs it.
 - **Edge Functions:** the owner runs `supabase functions deploy <name> --no-verify-jwt` from the repo folder.
 - **Secrets:** the owner runs `supabase secrets set NAME=value`. Secret values never go in files or chat.

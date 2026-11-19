@@ -13,6 +13,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 ## Files
 
 - `index.html` — the whole app. The Supabase URL and anon key are set at the top of the `<script>` block.
+- `.githooks/pre-commit` — stamps a new `app-version` into `index.html` on every commit that changes it, so open copies of the app update themselves (see "Updates reach open apps on their own" below). Turn it on once per copy of the repo with `git config core.hooksPath .githooks`.
 - `CLAUDE.md` — a short orientation Claude Code reads at the start of every session: where things live, how changes go live and how to test. Keep it in step with this README.
 - `assets/` — Rexius logo files referenced by `index.html` (full-colour logo on the login screen, white wordmark in the top bar, leaf mark for the favicon, home-screen icon and login backdrop). Deploy this folder alongside `index.html`.
 - `supabase/migrations/20261027170000_move_to_apparel_schema.sql` — **current layout**: everything lives in its own `apparel` schema (`apparel.items`, `apparel.transactions`, …). Run once after an admin has exposed the `apparel` schema under Project Settings → Data API. Older scripts are kept in `sql_history/` for reference only.
@@ -115,6 +116,15 @@ To stand it up somewhere new:
 3. Repo → Settings → Pages → Source: "Deploy from a branch" → branch `main`, folder `/ (root)` → Save.
 4. After a minute the site is live at `https://<org>.github.io/<repo>/`. Open it on a phone, sign in, and allow camera access when prompted.
 5. Add the new origin to `ALLOWED_ORIGINS` in both Edge Functions and redeploy them (see "Where it lives" above).
+
+### Updates reach open apps on their own
+
+People keep the app open for days, often installed on a phone's home screen or the Mac dock, so each push carries a version stamp and the app checks for a newer one:
+
+- **The stamp:** `<meta name="app-version">` near the top of `index.html`. The pre-commit hook sets it to the commit time (UTC) whenever `index.html` is in a commit, so it never needs editing by hand. A copy whose stamp still reads `unstamped` never checks, so a local or test copy doesn't reload itself.
+- **When it checks:** 3 seconds after the page opens, every time the app comes back to the front, and every 5 minutes while it's showing. Each check downloads `index.html` fresh (no cache) and compares stamps. GitHub Pages takes a minute or two after a push, so an open app typically updates within about 5 minutes, or straight away the next time it's opened.
+- **What happens:** if nobody's in the middle of anything, the app reloads itself straight onto the new version, using an address with `?v=<stamp>` so no cache can hand back the old page. It tidies the `?v=` away afterwards. If someone is mid-task (items in the check out cart, a dialog open, the scanner on, or typing in a box), it shows a **"A new version of the app is ready. Reload"** bar at the top instead, and reloads by itself at the next check once they're done.
+- **Never loops:** if a reload somehow lands on the old page again, it shows the bar rather than reloading a second time.
 
 The anon key is safe to publish: it only grants what the row-level security policies allow, and nothing is readable without an authenticated login that has an active row in `apparel.app_users`.
 

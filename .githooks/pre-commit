@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stamp index.html with a new app-version whenever it's in a commit, so open copies of the app
+# (phone home screen, Mac dock) notice the push and reload themselves. Turned on once per clone with:
+#   git config core.hooksPath .githooks
+if git diff --cached --name-only | grep -qx 'index.html'; then
+  stamp=$(date -u +%Y%m%d%H%M%S)
+  sed -i.bak -E "s/(<meta name=\"app-version\" content=\")[^\"]*\"/\1$stamp\"/" index.html && rm -f index.html.bak
+  git add index.html
+fi

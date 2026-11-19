@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
+<meta name="app-version" content="20261119030803">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -290,6 +291,10 @@ tr.low td { background: var(--orange-soft); }
 #toast.err { border-left-color: var(--orange); }
 #toast { border-left-color: var(--brand); }
 #toast.show { display: block; }
+/* "New version" bar, shown when an update arrives while someone is mid-task */
+#updateBar { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 70; display: none; align-items: center; gap: 12px; max-width: 92vw; background: var(--charcoal); color: #fff; padding: 8px 8px 8px 16px; border-radius: var(--radius); border-left: 6px solid var(--brand); font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+#updateBar.show { display: flex; }
+#updateBar .btn { min-height: 40px; padding: 6px 14px; }
 :root[data-theme="dark"] #toast { box-shadow: 0 0 0 1px var(--line-strong), 0 6px 20px rgba(0,0,0,.5); }
 
 /* login */
@@ -618,6 +623,7 @@ tr.low td { background: var(--orange-soft); }
 <!-- modal -->
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div id="toast"></div>
+<div id="updateBar" role="status"><span>A new version of the app is ready.</span><button class="btn primary" id="updateReloadBtn">Reload</button></div>
 
 <script>
 /* =========================================================
@@ -2387,6 +2393,46 @@ function openSetActive(u) {
     catch (e) { fail(e, deactivating ? "Couldn't deactivate" : "Couldn't reactivate"); }
   });
 }
+
+/* =========================================================
+   UPDATES: open apps pick up a new push on their own
+   ========================================================= */
+// Each commit stamps <meta name="app-version">. The page checks the live copy on start, whenever the app comes back to
+// the front, and every 5 minutes while it's showing. When the version differs it reloads straight away, unless
+// someone is mid-task (items in the check out cart, a dialog open, the scanner on, or typing), in which case it shows
+// a "Reload" bar and reloads by itself the next time the app is put away and reopened with nothing in progress.
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "";
+const RELOADED_FOR_KEY = "apparel.reloadedFor";
+let newVersion = "";
+const arrivedFor = new URLSearchParams(location.search).get("v") || "";   // set when this page is itself the result of an update reload
+const midTask = () => !!(S.cart.length || S.scanner || S.rcvItem || $("modalBg").classList.contains("open") ||
+  (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.value));
+function reloadToNewVersion() {
+  try { sessionStorage.setItem(RELOADED_FOR_KEY, newVersion); } catch (_) {}
+  const u = new URL(location.href); u.searchParams.set("v", newVersion);   // a new address, so no cache can hand back the old page
+  location.replace(u.toString());
+}
+function offerUpdate() {
+  let tried = arrivedFor; try { tried = sessionStorage.getItem(RELOADED_FOR_KEY) || arrivedFor; } catch (_) {}
+  if (tried !== newVersion && arrivedFor !== newVersion && !midTask()) return reloadToNewVersion();
+  $("updateBar").classList.add("show");   // mid-task, or a reload already didn't take: let the person choose
+}
+async function checkForUpdate() {
+  if (!APP_VERSION || APP_VERSION === "unstamped" || document.visibilityState !== "visible") return;
+  if (newVersion) return offerUpdate();
+  try {
+    const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const live = ((await r.text()).match(/<meta name="app-version" content="20261119030803"]+)"/) || [])[1];
+    if (live && live !== "unstamped" && live !== APP_VERSION) { newVersion = live; offerUpdate(); }
+  } catch (_) { /* offline or GitHub hiccup: try again later */ }
+}
+$("updateReloadBtn").addEventListener("click", reloadToNewVersion);
+document.addEventListener("visibilitychange", checkForUpdate);
+setInterval(checkForUpdate, 5 * 60 * 1000);
+setTimeout(checkForUpdate, 3000);
+// Tidy the ?v= that a reload adds, so a bookmark or "Add to Dock" never points at an old version
+if (new URLSearchParams(location.search).has("v")) { const u = new URL(location.href); u.searchParams.delete("v"); history.replaceState(history.state, "", u.toString()); }
 
 /* =========================================================
    START
