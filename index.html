@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261119045857">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261123205317">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -206,6 +206,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 tr.low td { background: var(--orange-soft); }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 13px; font-weight: 600; }
 .pill.low { background: var(--orange); color: #fff; }
+.pill.refill { background: var(--orange-soft); color: var(--ink); border: 1px solid var(--orange); }
+.inv-split { font-size: 13px; color: var(--mute); white-space: normal; }
 .pill.ok { background: var(--lime-soft); color: var(--ink); }
 .pill.off { background: var(--pill-off); color: var(--mute); }
 .pill.admin { background: var(--green); color: #fff; }
@@ -501,7 +503,7 @@ tr.low td { background: var(--orange-soft); }
         <div class="row">
           <div class="field"><label for="invSearch">Search</label><input id="invSearch" placeholder="Name, colour, size or SKU" autocomplete="off"></div>
           <div class="field narrow"><label for="invCat">Category</label><select id="invCat"><option value="">All</option></select></div>
-          <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option></select></div>
+          <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option><option value="refill">Refill from overflow</option><option value="overflow">In overflow</option></select></div>
         </div>
         <div class="table-wrap"><table id="invTable"><thead><tr><th>Item</th><th>Size</th><th>SKU</th><th class="num">On hand</th><th class="num">Reorder at</th><th class="num admin-only">Unit cost</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
@@ -627,7 +629,7 @@ tr.low td { background: var(--orange-soft); }
           <h3 style="margin-top:20px">View as a Check Out user</h3>
           <p class="hint">See the app exactly as Check Out users do: only the Check out and Inventory tabs, no costs or totals, and no Recent activity. It turns test mode on, so anything you check out is test data. Your account stays an admin underneath, so this shows their screens, not their database permissions. <strong>Back to admin</strong> in the orange bar ends it; it also ends when you sign out or close the tab.</p>
           <div class="btn-row"><button class="btn" id="viewAsBtn">View as Check Out user</button></div>
-          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items and departments are kept for next time.</p>
+          <p class="hint" style="margin-top:12px">Clear test activity deletes every test transaction, overflow move, test document, test cost change and test vendor match, and sets the test items' cost back to $0.00, so the next round starts from zero. Test items and departments are kept for next time.</p>
         </div>
       </div>
     </section>
@@ -795,7 +797,7 @@ function scopeToMode(q) {
   return ids.length ? q.not("item_id", "in", `(${ids.join(",")})`) : q;
 }
 function updateLowBadge() {
-  const n = S.inventory.filter((i) => i.active && i.low_stock && inScope(i.id)).length;
+  const n = S.inventory.filter((i) => i.active && (i.low_stock || i.refill) && inScope(i.id)).length;   // to reorder, or to refill from overflow
   const b = $("lowBadge"); b.textContent = n; b.style.display = n ? "" : "none";
 }
 
@@ -1860,32 +1862,79 @@ function renderInventory() {
   const low = active.filter((i) => i.low_stock);
   const units = active.reduce((a, i) => a + i.on_hand, 0);
   const value = active.reduce((a, i) => a + i.on_hand * Number(i.unit_cost), 0);
+  const refill = active.filter((i) => i.refill).length;
+  const boxed = active.reduce((a, i) => a + overflowOf(i), 0);
   $("invStats").innerHTML = `<div class="stat ${low.length ? "warn" : ""}"><div class="n">${low.length}</div><div class="l">${low.length === 1 ? "item" : "items"} at or below reorder point</div></div>
-    <div class="stat"><div class="n">${units}</div><div class="l">units on hand</div></div>
+    ${refill ? `<div class="stat warn"><div class="n">${refill}</div><div class="l">${refill === 1 ? "item" : "items"} to refill from overflow</div></div>` : ""}
+    <div class="stat"><div class="n">${units}</div><div class="l">units on hand${boxed ? `, ${boxed} of them in overflow` : ""}</div></div>
     <div class="stat"><div class="n">${money(value)}</div><div class="l">inventory value at current cost</div></div>`;
 
   const q = $("invSearch").value.trim().toLowerCase(); const cat = $("invCat").value; const only = $("invOnly").value;
-  let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock));
-  rows.sort((a, b) => (b.low_stock - a.low_stock) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
+  let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock) && (only !== "refill" || i.refill) && (only !== "overflow" || overflowOf(i) > 0));
+  rows.sort((a, b) => (b.low_stock - a.low_stock) || (!!b.refill - !!a.refill) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
   const tb = $("invTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button>` : ""}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
     : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
-$("invTable").addEventListener("click", (e) => { const b = e.target.closest("[data-adjust]"); if (b) openAdjust(b.dataset.adjust); });
+$("invTable").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-adjust]"); if (b) return openAdjust(b.dataset.adjust);
+  const o = e.target.closest("[data-overflow]"); if (o) openOverflow(o.dataset.overflow);
+});
+// How many of an item are boxed in overflow. 0 until the overflow SQL has been run.
+const overflowOf = (i) => i.overflow || 0;
+// The count is taken on the rack: with stock in overflow, that part is left out of the number asked for and added back on.
 function openAdjust(id) {
   const i = S.inventory.find((x) => x.id === id);
-  openModal(`<h2>Adjust count</h2><p>${esc(itemLabel(i))} · currently <strong>${i.on_hand}</strong> on hand</p>
-    <div class="field"><label for="adjNew">Actual count</label><input id="adjNew" type="number" inputmode="numeric" value="${i.on_hand}"></div>
+  const boxed = overflowOf(i), rack = i.on_hand - boxed;
+  openModal(`<h2>Adjust count</h2><p>${esc(itemLabel(i))} · currently <strong>${rack}</strong> ${boxed ? `on the rack, plus <strong>${boxed}</strong> in overflow` : "on hand"}</p>
+    <div class="field"><label for="adjNew">Actual count${boxed ? " on the rack" : ""}</label><input id="adjNew" type="number" inputmode="numeric" value="${rack}"></div>
+    ${boxed ? `<p class="hint">Count only what's on the rack. To change the overflow count, use the Overflow button.</p>` : ""}
     <div class="field"><label for="adjNotes">Reason</label><input id="adjNotes" placeholder="e.g. physical count, damaged, found in truck"></div>
     <div class="btn-row"><button class="btn primary" id="adjSave">Save adjustment</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("adjSave").addEventListener("click", async () => {
     const target = parseInt($("adjNew").value); if (isNaN(target) || target < 0) return toast("Enter the actual count.", true);
-    const delta = target - i.on_hand; if (!delta) return closeModal();
+    const delta = target - rack; if (!delta) return closeModal();
     const notes = $("adjNotes").value.trim(); if (!notes) return toast("Give a short reason so the history makes sense later.", true);
     const { error } = await sb.from("transactions").insert({ type: "adjust", item_id: id, qty_change: delta, performed_by: S.session.user.id, notes });
     if (error) return fail(error, "Couldn't save adjustment");
-    closeModal(); toast(`Set ${itemLabel(i)} to ${target}`); await refreshInventory(); loadActivity();
+    closeModal(); toast(`Set ${itemLabel(i)} to ${target}${boxed ? " on the rack" : ""}`); await refreshInventory(); loadActivity();
   });
+}
+
+// Overflow: extra stock boxed up off the rack. It still counts as on hand; a move only changes where it is.
+function openOverflow(id) {
+  const i = S.inventory.find((x) => x.id === id);
+  if (i.on_rack == null) return toast("Overflow isn't set up yet: run the overflow SQL first (README, Overflow).", true);
+  const back = i.refill || (!i.on_rack && i.overflow > 0);   // start on the direction that's most likely wanted
+  openModal(`<h2>Overflow</h2><p>${esc(itemLabel(i))} · <strong>${i.on_rack}</strong> on the rack · <strong>${i.overflow}</strong> in overflow</p>
+    <p class="hint">Overflow is extra stock boxed up off the rack. It still counts as on hand, and check outs come off the rack.</p>
+    <div class="row">
+      <div class="field"><label for="ovDir">Move</label><select id="ovDir"><option value="in">Rack to overflow</option><option value="out"${back ? " selected" : ""}${i.overflow ? "" : " disabled"}>Overflow back to the rack</option></select></div>
+      <div class="field narrow"><label for="ovQty">How many</label><input id="ovQty" type="number" inputmode="numeric" min="0" placeholder="0"></div>
+    </div>
+    <div class="field"><label for="ovLoc">Where the box is (optional)</label><input id="ovLoc" maxlength="80" value="${esc(i.overflow_location || "")}" placeholder="e.g. Box 3, top shelf"></div>
+    <div class="btn-row"><button class="btn primary" id="ovSave">Save</button><button class="btn" onclick="closeModal()">Cancel</button></div>
+    <div id="ovHistory" class="hint" style="margin-top:12px"></div>`);
+  $("ovSave").addEventListener("click", async () => {
+    const raw = $("ovQty").value.trim(), n = raw ? parseInt(raw) : 0;
+    if (isNaN(n) || n < 0) return toast("Enter how many to move.", true);
+    const out = $("ovDir").value === "out", loc = $("ovLoc").value.trim();
+    if (!n && loc === (i.overflow_location || "")) return toast("Enter how many to move.", true);
+    if (!n && !i.overflow) return toast("Enter how many to move to overflow.", true);
+    if (out && n > i.overflow) return toast(`Only ${i.overflow} in overflow to bring back.`, true);
+    if (!out && n > i.on_rack) return toast(`Only ${i.on_rack} on the rack to move.`, true);
+    const { error } = await sb.rpc("move_overflow", { p_item_id: id, p_qty: out ? -n : n, p_location: loc });
+    if (error) return fail(error, "Couldn't save the move");
+    closeModal(); toast(!n ? "Box location saved" : out ? `Moved ${n} of ${itemLabel(i)} back to the rack` : `Moved ${n} of ${itemLabel(i)} to overflow`);
+    await refreshInventory();
+  });
+  loadOverflowHistory(id);
+}
+async function loadOverflowHistory(id) {
+  const { data, error } = await sb.from("overflow_moves").select("qty, note, moved_by, created_at").eq("item_id", id).order("id", { ascending: false }).limit(5);
+  const el = $("ovHistory"); if (error || !el || !data.length) return;
+  if (!S.users.length) await loadUserNames();
+  el.innerHTML = `<strong>Recent moves</strong>` + data.map((m) => `<div>${fmtWhen(m.created_at)} · ${Math.abs(m.qty)} ${m.qty > 0 ? "to overflow" : "back to the rack"}${m.note ? ` · ${esc(m.note)}` : userName(m.moved_by) ? ` · ${esc(userName(m.moved_by))}` : ""}</div>`).join("");
 }
 
 async function loadActivity() {
@@ -2117,6 +2166,8 @@ $("testClearBtn").addEventListener("click", async () => {
   if (ids.length) {
     let r = await sb.from("transactions").delete().in("item_id", ids);
     if (r.error) return fail(r.error, "Couldn't delete the test transactions");
+    r = await sb.from("overflow_moves").delete().in("item_id", ids);
+    if (r.error && r.error.code !== "PGRST205" && r.error.code !== "42P01") return fail(r.error, "Couldn't delete the test overflow moves");   // no such table until the overflow SQL is run
     r = await sb.from("cost_updates").delete().in("item_id", ids);
     if (r.error) return fail(r.error, "Couldn't delete the test cost history");
     r = await sb.from("vendor_aliases").delete().in("item_id", ids);

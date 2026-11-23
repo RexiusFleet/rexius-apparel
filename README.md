@@ -25,6 +25,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261118190000_item_colors.sql` — item colours: `apparel.items.color`, moves a colour already in an item's name into it, and puts the colour in low-stock emails. See "Colours" below. Run once, the same way, before deploying `invoice-extract` and pushing the page; safe to re-run.
 - `supabase/migrations/20261118200000_fleet_services_black.sql` — makes every item with "Fleet Service" in its name Black and puts BL in its SKU in front of the size (`FS-SS-L` becomes `FS-SS-BL-L`). Their old labels won't scan afterwards, so reprint them. Safe to re-run. Don't re-run the earlier Fleet Services tees file after it.
 - `supabase/migrations/20261118210000_hivis_vest_cap_colors.sql` — colours for the starting items: Hi-Vis tees and sweatshirt become *High-Vis Yellow* (`HV-SS-L` → `SS-HVY-L`), safety vests *Yellow* (`RX-SV-L` → `SV-YL-L`) and the ball cap *Black* (`RX-BC` → `BC-BL`). The HV- and RX- in front are dropped, since the colour code says it. It also adds an *Orange* safety vest for every yellow one (`SV-OR-L`), copying its reorder point and starting cost, with 0 on hand. Their old labels won't scan afterwards, so reprint them. Test items are left alone. Safe to re-run. Don't re-run the starting product list file after it.
+- `supabase/migrations/20261123120000_overflow.sql` — overflow: the `apparel.overflow_moves` table, `apparel.items.overflow_location`, the `apparel.move_overflow()` function, the overflow columns on `apparel.inventory`, and the *refill* kind of low-stock alert. See "Overflow" below. Run once, the same way, before deploying `low-stock-alert` and pushing the page; safe to re-run.
 - `supabase/migrations/20261118150000_drop_employees.sql` — deletes the `apparel.employees` table and `employee_id` on check outs, once check outs went by department. Can't be undone; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
@@ -237,7 +238,7 @@ Setup, once, in this order:
 
 ## Low-stock emails
 
-When a stock change takes an item from above its reorder point to at or below it (the moment the Inventory tab starts flagging it **Low**), every active admin gets an email from the app's Gmail account. It lists the item, size, SKU, how many are left and the reorder point, with a link to the app. A check out that takes several items down at once sends one email listing them all. An item that stays low doesn't email again: it has to be restocked above its reorder point and drop again. Check outs, count adjustments and undoing a receipt can all set it off. Adding items, changing a reorder point and reactivating an item never do, and inactive items never email. To stop someone's emails, make them a checkout user or deactivate them (Admin → Users).
+When a stock change takes an item from above its reorder point to at or below it (the moment the Inventory tab starts flagging it **Low**), every active admin gets an email from the app's Gmail account. It lists the item, size, SKU, how many are left and the reorder point, with a link to the app. A check out that takes several items down at once sends one email listing them all. An item that stays low doesn't email again: it has to be restocked above its reorder point and drop again. Check outs, count adjustments and undoing a receipt can all set it off. Adding items, changing a reorder point and reactivating an item never do, and inactive items never email. To stop someone's emails, make them a checkout user or deactivate them (Admin → Users). An item with stock in overflow emails earlier, when its rack runs low: see "Overflow" below.
 
 Test items email only the admin who made the change, with **[TEST]** at the start of the subject, so the whole thing can be tried in test mode without bothering anyone else. Clearing test activity never emails.
 
@@ -278,6 +279,36 @@ If an email doesn't arrive:
   ```sql
   select id, status_code, content, error_msg, created from net._http_response order by id desc limit 10;
   ```
+
+## Overflow
+
+For an item with far more stock than the rack needs. The extra goes in a box in the overflow area, and the app keeps counting it.
+
+An item's **on hand** number is still everything Rexius has: rack and overflow together. Overflow is a second number beside it, and what's on the rack is the difference. Moving stock between the two is not a receive, a check out or an adjustment, so costs, chargeback reports and invoice coding reports don't change.
+
+- **Moving stock.** Admins have an **Overflow** button on each row of the Inventory tab. Pick *Rack to overflow* or *Overflow back to the rack*, enter how many, and optionally note where the box is (e.g. "Box 3, top shelf"). The app refuses to move more than is there. The window lists the item's last five moves.
+- **What Inventory shows.** An item with overflow has a second line under its count: *8 on rack · 48 in overflow (Box 3, top shelf)*. Everyone sees it, checkout users included. The *Show* filter has **In overflow** and **Refill from overflow**.
+- **Refill.** When the rack is at or below the item's reorder point and overflow has some, the item is tagged **Refill** and sorted near the top, and it counts in the orange number on the Inventory tab. Bring some over and the tag goes away. There is one reorder point per item, used for both checks.
+- **Low** still means time to reorder: rack and overflow together are at or below the reorder point.
+- **Emails.** A check out that takes the rack down to the reorder point, while overflow still has some, sends admins a **Refill from overflow** email in place of the low-stock one, with the rack and overflow counts. When the total reaches the reorder point the usual low-stock email goes out, and says how many of those are in overflow. Moving stock into overflow never emails.
+- **Receiving** always goes to the rack. Move the extra to overflow afterwards if there's too much.
+- **Check outs** come off the rack. If stock ever drops below the overflow number (someone took from a box, or a count was adjusted down), the app cuts overflow to match and records why.
+- **Counting.** *Adjust* asks for the count on the rack when the item has overflow, and leaves the overflow number alone. If a box's count is wrong, bring the difference back to the rack with *Overflow*, then *Adjust* the rack.
+- **Test mode** works the same on the Test Product, and *Clear test activity* deletes its overflow moves.
+
+How it works: `apparel.overflow_moves` holds one row per move (`qty` positive into overflow, negative back to the rack), written only by `apparel.move_overflow()`, which is admin-only. `apparel.inventory` adds `overflow`, `on_rack`, `refill` and `overflow_location` to each item. `apparel.low_stock_alerts.kind` is `low` or `refill`.
+
+Setup, once, in this order:
+
+1. Run `supabase/migrations/20261123120000_overflow.sql` in the SQL Editor.
+2. Deploy the email function, which adds the refill wording:
+
+   ```bash
+   supabase functions deploy low-stock-alert --no-verify-jwt
+   ```
+
+3. Push `index.html` to `main`.
+4. **Try it.** Turn on test mode and click **Clear test activity**. Receive 10 of one Test Product size, then use **Overflow** on the Inventory tab to move 6 to overflow: the row shows *4 on rack · 6 in overflow*. Check 2 out. The rack is now at 2, its reorder point, so the row is tagged **Refill** and a **[TEST] Refill from overflow** email reaches you within a minute. Clear test activity afterwards.
 
 ## Check out by department
 
@@ -323,7 +354,7 @@ Setup, once, in this order: run `supabase/migrations/20261118190000_item_colors.
 
 - **Check out** — scan labels (or pick from the list), set quantities, check the summary, confirm. Each item is charged to your own department unless you pick another in its *Charge to* dropdown.
 - **Receive** — read a packing slip to add what arrived, and read the invoice when it comes to set costs. *Receive one item* is there for anything else; entering a unit cost there also updates the item's current cost, which future checkouts are charged at.
-- **Inventory** — on-hand counts with low-stock items flagged first. Admins can adjust counts after a physical check and undo mistaken transactions.
+- **Inventory** — on-hand counts with low-stock items flagged first, and how much of each is on the rack or boxed in overflow. Admins can adjust counts after a physical check, move stock to and from overflow, and undo mistaken transactions.
 - **Reports** — chargebacks by department for any date range, including vendor set-up fees under department 10, with CSV download.
 - **Display** — the half-circle button in the top bar picks Auto (follows the phone or computer's own light/dark setting), Light or Dark. Each device remembers its own choice. Printed labels are always black on white. Colours live as variables at the top of the `<style>` block, light first and then the dark overrides; a new screen should use those variables rather than fixed colours so it works in both.
 

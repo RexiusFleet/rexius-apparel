@@ -15,6 +15,10 @@ export type Alert = {
   is_test: boolean;
   triggered_by: string | null;
   created_at: string;
+  /** "low": rack and overflow together are at the reorder point. "refill": only the rack is, and overflow has more. Missing means "low". */
+  kind?: "low" | "refill";
+  /** How many of on_hand are boxed in overflow. */
+  overflow?: number;
 };
 
 /** An app user, as apparel.admin_list_users() returns it. */
@@ -104,18 +108,34 @@ export function latestPerItem(alerts: Alert[]): Alert[] {
 }
 
 const itemName = (a: Alert) => (a.size ? `${a.name} ${a.size}` : a.name);
+const overflowOf = (a: Alert) => a.overflow ?? 0;
+const isRefill = (a: Alert) => a.kind === "refill";
+const rackOf = (a: Alert) => a.on_hand - overflowOf(a);
+const count = (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`;
 
 export function subjectFor(items: Alert[], isTest: boolean): string {
   const prefix = isTest ? "[TEST] " : "";
+  const refill = items.filter(isRefill).length;
+  const low = items.length - refill;
   if (items.length === 1) {
     const a = items[0];
-    return `${prefix}Low stock: ${itemName(a)} – ${a.on_hand} left (reorder at ${a.reorder_threshold})`;
+    return refill
+      ? `${prefix}Refill from overflow: ${itemName(a)} – ${rackOf(a)} on the rack, ${overflowOf(a)} in overflow`
+      : `${prefix}Low stock: ${itemName(a)} – ${a.on_hand} left (reorder at ${a.reorder_threshold})`;
   }
-  return `${prefix}Low stock: ${items.length} items at their reorder point`;
+  if (!refill) return `${prefix}Low stock: ${items.length} items at their reorder point`;
+  if (!low) return `${prefix}Refill from overflow: ${refill} items low on the rack`;
+  return `${prefix}Low stock: ${count(low, "item")} to reorder, ${refill} to refill from overflow`;
 }
 
 function intro(count: number): string {
   return count === 1 ? "This item is now at or below its reorder point:" : "These items are now at or below their reorder point:";
+}
+
+function refillIntro(count: number): string {
+  return count === 1
+    ? "This item is low on the rack, with more in overflow to bring over:"
+    : "These items are low on the rack, with more in overflow to bring over:";
 }
 
 function footer(isTest: boolean): string {
@@ -125,11 +145,24 @@ function footer(isTest: boolean): string {
 }
 
 export function textBody(items: Alert[], appUrl: string, isTest: boolean): string {
+  const low = items.filter((a) => !isRefill(a));
+  const refill = items.filter(isRefill);
   const lines: string[] = [];
   if (isTest) lines.push(TEST_NOTE, "");
-  lines.push(intro(items.length), "");
-  for (const a of items) lines.push(`- ${itemName(a)} (${a.sku}): ${a.on_hand} on hand, reorder at ${a.reorder_threshold}`);
-  lines.push("", `Open the app: ${appUrl}`, "", footer(isTest));
+  if (low.length) {
+    lines.push(intro(low.length), "");
+    for (const a of low) {
+      const boxed = overflowOf(a) > 0 ? ` (${overflowOf(a)} of them in overflow)` : "";
+      lines.push(`- ${itemName(a)} (${a.sku}): ${a.on_hand} on hand${boxed}, reorder at ${a.reorder_threshold}`);
+    }
+    lines.push("");
+  }
+  if (refill.length) {
+    lines.push(refillIntro(refill.length), "");
+    for (const a of refill) lines.push(`- ${itemName(a)} (${a.sku}): ${rackOf(a)} on the rack, ${overflowOf(a)} in overflow, refill at ${a.reorder_threshold}`);
+    lines.push("");
+  }
+  lines.push(`Open the app: ${appUrl}`, "", footer(isTest));
   return lines.join("\n");
 }
 
@@ -138,23 +171,45 @@ export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
 
-// Inline styles only, and a plain table, so it looks the same in Outlook and Gmail.
+// Inline styles only, and plain tables, so it looks the same in Outlook and Gmail.
 export function htmlBody(items: Alert[], appUrl: string, isTest: boolean): string {
   const th = "padding:6px 14px 6px 0;border-bottom:2px solid #4E4E50;font-weight:bold;";
   const td = "padding:6px 14px 6px 0;border-bottom:1px solid #CCD3CD;";
   const head = (label: string, align: string) => `<th align="${align}" style="${th}text-align:${align};">${label}</th>`;
   const cell = (value: string, align: string, bold = false) =>
     `<td align="${align}" style="${td}text-align:${align};">${bold ? `<strong>${esc(value)}</strong>` : esc(value)}</td>`;
-  const rows = items
-    .map((a) => `<tr>${cell(a.name, "left")}${cell(a.size ?? "", "left")}${cell(a.sku, "left")}${cell(String(a.on_hand), "right", true)}${cell(String(a.reorder_threshold), "right")}</tr>`)
-    .join("\n");
+  const table = (heads: string, rows: string) =>
+    `<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:14px;">
+<tr>${heads}</tr>
+${rows}
+</table>`;
+  const item = (a: Alert) => `${cell(a.name, "left")}${cell(a.size ?? "", "left")}${cell(a.sku, "left")}`;
+  const itemHeads = `${head("Item", "left")}${head("Size", "left")}${head("SKU", "left")}`;
+  const sections: string[] = [];
+
+  const low = items.filter((a) => !isRefill(a));
+  if (low.length) {
+    // The overflow column only shows when one of these items has some boxed up.
+    const boxed = low.some((a) => overflowOf(a) > 0);
+    const rows = low
+      .map((a) => `<tr>${item(a)}${cell(String(a.on_hand), "right", true)}${boxed ? cell(String(overflowOf(a)), "right") : ""}${cell(String(a.reorder_threshold), "right")}</tr>`)
+      .join("\n");
+    sections.push(`<p style="margin:0 0 12px;">${esc(intro(low.length))}</p>
+${table(`${itemHeads}${head("On hand", "right")}${boxed ? head("Of those, in overflow", "right") : ""}${head("Reorder at", "right")}`, rows)}`);
+  }
+
+  const refill = items.filter(isRefill);
+  if (refill.length) {
+    const rows = refill
+      .map((a) => `<tr>${item(a)}${cell(String(rackOf(a)), "right", true)}${cell(String(overflowOf(a)), "right")}${cell(String(a.reorder_threshold), "right")}</tr>`)
+      .join("\n");
+    sections.push(`<p style="margin:${low.length ? "20px" : "0"} 0 12px;">${esc(refillIntro(refill.length))}</p>
+${table(`${itemHeads}${head("On the rack", "right")}${head("In overflow", "right")}${head("Refill at", "right")}`, rows)}`);
+  }
+
   return `<!doctype html>
 <html><body style="margin:0;padding:16px;background:#FFFFFF;color:#2A2D2C;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;">
-${isTest ? `<p style="margin:0 0 12px;padding:8px 12px;background:#FCEBDD;border-left:4px solid #E4621B;">${esc(TEST_NOTE)}</p>\n` : ""}<p style="margin:0 0 12px;">${esc(intro(items.length))}</p>
-<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:14px;">
-<tr>${head("Item", "left")}${head("Size", "left")}${head("SKU", "left")}${head("On hand", "right")}${head("Reorder at", "right")}</tr>
-${rows}
-</table>
+${isTest ? `<p style="margin:0 0 12px;padding:8px 12px;background:#FCEBDD;border-left:4px solid #E4621B;">${esc(TEST_NOTE)}</p>\n` : ""}${sections.join("\n")}
 <p style="margin:16px 0;"><a href="${esc(appUrl)}" style="color:#3C7235;font-weight:bold;">Open Rexius Apparel</a></p>
 <p style="margin:16px 0 0;color:#6F7572;font-size:12px;">${esc(footer(isTest))}</p>
 </body></html>`;

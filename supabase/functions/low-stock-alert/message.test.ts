@@ -90,4 +90,27 @@ assert.ok(nasty.html.includes("&lt;script&gt;x&lt;/script&gt;") && nasty.html.in
 assert.ok(nasty.html.includes('href="https://example.com/?a=1&amp;b=&quot;2&quot;"'));
 assert.ok(nasty.text.includes("<script>x</script> M&L (A\"B)"));   // plain text stays as typed
 
+// Refill: the rack is low but overflow has more. Its own subject and wording, with rack and overflow counts.
+const refill = alert({ id: 30, on_hand: 29, reorder_threshold: 5, kind: "refill", overflow: 24 });
+let msg = buildMessage([refill], APP, false);
+assert.equal(msg.subject, "Refill from overflow: High-Vis T-Shirt - Short Sleeve L – 5 on the rack, 24 in overflow");
+assert.ok(msg.text.startsWith("This item is low on the rack, with more in overflow to bring over:\n\n- High-Vis T-Shirt - Short Sleeve L (HV-SS-L): 5 on the rack, 24 in overflow, refill at 5\n\nOpen the app: "));
+assert.ok(!msg.text.includes("reorder point"));
+assert.ok(msg.html.includes(">On the rack</th>") && msg.html.includes(">In overflow</th>") && !msg.html.includes(">On hand</th>"));
+assert.equal(buildMessage([refill, alert({ id: 31, item_id: "item-2", on_hand: 12, overflow: 9, kind: "refill" })], APP, true).subject,
+  "[TEST] Refill from overflow: 2 items low on the rack");
+
+// Mixed: one to reorder, one to refill. Two sections, reorder first.
+msg = buildMessage([refill, alert({ id: 32, item_id: "item-2", size: "XL", sku: "HV-SS-XL", on_hand: 3 })], APP, false);
+assert.equal(msg.subject, "Low stock: 1 item to reorder, 1 to refill from overflow");
+assert.ok(msg.text.indexOf("This item is now at or below its reorder point:") < msg.text.indexOf("This item is low on the rack"));
+assert.equal(msg.html.match(/<table/g)?.length, 2);
+
+// Low with some of it still boxed: says so, and the HTML gains the overflow column.
+msg = buildMessage([alert({ id: 33, on_hand: 4, overflow: 3, kind: "low" })], APP, false);
+assert.equal(msg.subject, "Low stock: High-Vis T-Shirt - Short Sleeve L – 4 left (reorder at 5)");
+assert.ok(msg.text.includes("): 4 on hand (3 of them in overflow), reorder at 5"));
+assert.ok(msg.html.includes(">Of those, in overflow</th>"));
+assert.ok(!buildMessage([alert({})], APP, false).html.includes("overflow"));
+
 console.log("message tests passed");

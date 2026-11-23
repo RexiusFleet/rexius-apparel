@@ -5,7 +5,9 @@
 // The database does the noticing. Triggers on apparel.transactions queue a
 // row in apparel.low_stock_alerts for every item a stock change takes from
 // above its reorder point to at or below it, then call this function through
-// pg_net (supabase/migrations/20261102210000_low_stock_alerts.sql). The call
+// pg_net (supabase/migrations/20261102210000_low_stock_alerts.sql). An item
+// with stock boxed in overflow (20261123120000_overflow.sql) gets a "refill"
+// alert instead when only its rack reaches the reorder point. The call
 // carries nothing: the function claims whatever is due in that queue, sends
 // it and records the outcome on each row. A stray call can't send anything
 // that isn't already due, so there is no caller authentication.
