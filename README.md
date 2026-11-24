@@ -289,7 +289,7 @@ An item's **on hand** number is still everything Rexius has: rack and overflow t
 
 - **Moving stock.** Admins have an **Overflow** button on each row of the Inventory tab. Pick *Rack to overflow* or *Overflow back to the rack*, enter how many, and optionally note where the box is (e.g. "Box 3, top shelf"). The app refuses to move more than is there. The window lists the item's last five moves.
 - **What Inventory shows.** An item with overflow has a second line under its count: *8 on rack · 48 in overflow (Box 3, top shelf)*. Everyone sees it, checkout users included. The *Show* filter has **In overflow** and **Refill from overflow**.
-- **Refill.** When the rack is at or below the item's reorder point and overflow has some, the item is tagged **Refill** and sorted near the top, and it counts in the orange number on the Inventory tab. Bring some over and the tag goes away. There is one reorder point per item, used for both checks.
+- **Refill.** When the rack is at or below the item's reorder point and overflow has some, the item is tagged **Refill**, and it counts in the orange number on the Inventory tab. Bring some over and the tag goes away. There is one reorder point per item, used for both checks.
 - **Low** still means time to reorder: rack and overflow together are at or below the reorder point.
 - **Emails.** A check out that takes the rack down to the reorder point, while overflow still has some, sends admins a **Refill from overflow** email in place of the low-stock one, with the rack and overflow counts. When the total reaches the reorder point the usual low-stock email goes out, and says how many of those are in overflow. Moving stock into overflow never emails.
 - **Receiving** always goes to the rack. Move the extra to overflow afterwards if there's too much.
@@ -371,11 +371,20 @@ Each colour of a product is its own item, just like each size: its own SKU, QR l
 
 Setup, once, in this order: run `supabase/migrations/20261118190000_item_colors.sql` in the SQL Editor, deploy the reader with `supabase functions deploy invoice-extract --no-verify-jwt`, then push `index.html`.
 
+## Finding and counting items on Inventory
+
+The Inventory list is in product order: each product's sizes are together, in size order, and low sizes are tagged **Low** where they sit. The box at the top counts them, and **Show → Low stock only** lists just those.
+
+- **Jump to.** The first box above the list names every product shown (e.g. *Safety Vest Class 3 – High-Vis Yellow*). Pick one and the page scrolls to it and marks its sizes in green for a few seconds. Nothing is hidden, so the whole list is still there to scroll. It follows the other filters and the Main / Side switch. Everyone has it.
+- **Search** still narrows the list to what matches, for when that's easier.
+- **Scan to adjust** (admins). The button at the top of Inventory opens the camera. Point it at an item's QR label and the **Adjust count** window opens for that item, ready to type the count. Save, then point at the next label. Holding the same label in view after saving doesn't reopen it, so step away from it for a few seconds to count it again (or use its Adjust button). **Done scanning** turns the camera off, and so does leaving the Inventory tab. Test mode works the same way, with test labels only.
+- **The reason is remembered.** Adjust fills in the last reason you typed (for example "physical count") until you leave or reload the page, so a run of counts only needs it once.
+
 ## Day to day
 
 - **Check out** — scan labels (or pick from the list), set quantities, check the summary, confirm. Each item is charged to your own department unless you pick another in its *Charge to* dropdown.
 - **Receive** — read a packing slip to add what arrived, and read the invoice when it comes to set costs. *Receive one item* is there for anything else; entering a unit cost there also updates the item's current cost, which future checkouts are charged at.
-- **Inventory** — on-hand counts with low-stock items flagged first, and how much of each is on the rack or boxed in overflow. Items ordered as needed (Fleet Services, one-offs) are under *Side inventory*. Admins can adjust counts after a physical check, move stock to and from overflow, and undo mistaken transactions.
+- **Inventory** — on-hand counts, product by product, with low stock tagged, and how much of each is on the rack or boxed in overflow. Items ordered as needed (Fleet Services, one-offs) are under *Side inventory*. Admins can adjust counts after a physical check (*Scan to adjust* is quickest), move stock to and from overflow, and undo mistaken transactions.
 - **Reports** — chargebacks by department for any date range, including vendor set-up fees under department 10, with CSV download.
 - **Display** — the half-circle button in the top bar picks Auto (follows the phone or computer's own light/dark setting), Light or Dark. Each device remembers its own choice. Printed labels are always black on white. Colours live as variables at the top of the `<style>` block, light first and then the dark overrides; a new screen should use those variables rather than fixed colours so it works in both.
 

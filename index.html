@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261124193740">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261124195242">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -204,6 +204,9 @@ th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line
 th { font-weight: 600; color: var(--ink-2); font-size: 14px; border-bottom: 1.5px solid var(--line-strong); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.low td { background: var(--orange-soft); }
+#invTable tbody tr { scroll-margin-top: 12px; }
+tr.jump-hit td { background: var(--lime-soft); }   /* Jump to: the product's rows, for a moment */
+tr.jump-hit td:first-child { box-shadow: inset 4px 0 0 var(--brand); }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 13px; font-weight: 600; }
 .pill.low { background: var(--orange); color: #fff; }
 .pill.refill { background: var(--orange-soft); color: var(--ink); border: 1px solid var(--orange); }
@@ -220,8 +223,8 @@ tr.low td { background: var(--orange-soft); }
 .empty { color: var(--mute); padding: 20px 0; text-align: center; }
 
 /* checkout specifics */
-#reader { width: 100%; max-width: 420px; margin: 0 auto 10px; border: 1.5px solid var(--btn-border); border-radius: var(--radius); overflow: hidden; background: #000; }
-#reader video { width: 100% !important; }
+#reader, #invReader { width: 100%; max-width: 420px; margin: 0 auto 10px; border: 1.5px solid var(--btn-border); border-radius: var(--radius); overflow: hidden; background: #000; }
+#reader video, #invReader video { width: 100% !important; }
 .scan-hint { text-align: center; color: var(--mute); font-size: 15px; margin-bottom: 10px; }
 .cart-line { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .cart-line:last-child { border-bottom: 0; }
@@ -504,11 +507,17 @@ tr.low td { background: var(--orange-soft); }
 
     <!-- ---------- INVENTORY ---------- -->
     <section class="view" id="view-inventory">
-      <div class="view-head"><h2>Inventory</h2><button class="btn small" id="refreshInvBtn">Refresh</button></div>
+      <div class="view-head"><h2>Inventory</h2><div class="btn-row" style="margin:0"><button class="btn small admin-only" id="invScanBtn">Scan to adjust</button><button class="btn small" id="refreshInvBtn">Refresh</button></div></div>
+      <div class="panel admin-only" id="invScanArea" style="display:none">
+        <div id="invReader"></div>
+        <div class="scan-hint">Point the camera at an item's label to adjust its count.</div>
+        <button class="btn block" id="invScanStopBtn">Done scanning</button>
+      </div>
       <div class="subnav" id="invSideNav" style="display:none"><button data-side="main" class="active">Main inventory</button><button data-side="side">Side inventory<span class="badge" id="sideBadge" style="display:none"></span></button></div>
       <div class="stats admin-only" id="invStats"></div>
       <div class="panel quiet">
         <div class="row">
+          <div class="field"><label for="invJump">Jump to</label><select id="invJump"><option value="">Choose a product…</option></select></div>
           <div class="field"><label for="invSearch">Search</label><input id="invSearch" placeholder="Name, colour, size or SKU" autocomplete="off"></div>
           <div class="field narrow"><label for="invCat">Category</label><select id="invCat"><option value="">All</option></select></div>
           <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option><option value="refill">Refill from overflow</option><option value="overflow">In overflow</option></select></div>
@@ -669,7 +678,8 @@ const S = {
   items: [], inventory: [], departments: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
   cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
   report: null, testMode: false, viewAsCheckout: false, testIds: new Set(), coFor: null, activity: [],
-  invSide: false   // Inventory tab is showing side inventory
+  invSide: false,   // Inventory tab is showing side inventory
+  invScanner: null, invLastScan: { code: null, t: 0 }, lastAdjustReason: ""   // Scan to adjust, and the reason last typed in Adjust
 };
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
@@ -733,7 +743,7 @@ async function signIn() {
 // Signs out this device only. If Supabase can't end the session (it has already expired or been
 // revoked), the saved login is dropped anyway, so the button always gets back to the sign-in screen.
 $("signOutBtn").addEventListener("click", async () => {
-  await stopScanner();
+  await stopScanner(); await stopInvScanner();
   let error;
   try { ({ error } = await sb.auth.signOut({ scope: "local" })); } catch (e) { error = e; }
   if (error) {
@@ -818,6 +828,7 @@ const ADMIN_VIEWS = ["receive", "reports", "admin"];
 async function showView(name) {
   if (ADMIN_VIEWS.includes(name) && !isAdmin()) name = "checkout";
   if (name !== "checkout") await stopScanner();
+  if (name !== "inventory") await stopInvScanner();
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "inventory") { await refreshInventory(); loadActivity(); }
@@ -1872,6 +1883,20 @@ const isSide = (i) => !!i.side;
 // No reorder point: ordered as needed, so never Low. Shown as "As needed", with an Out tag at 0.
 const noReorder = (i) => i.reorder_threshold == null;
 const reorderCell = (i) => noReorder(i) ? `<span class="as-needed">As needed</span>` : i.reorder_threshold;
+// One product = one name and colour, the way Jump to lists them.
+const prodKey = (i) => `${i.name.trim().toLowerCase()}|${colorOf(i).trim().toLowerCase()}`;
+// Jump to: scrolls to the product's first row and marks its rows for a moment. The list itself isn't filtered.
+let jumpTimer = null;
+$("invJump").addEventListener("change", (e) => {
+  const k = e.target.value; e.target.value = ""; e.target.blur();
+  if (!k) return;
+  const trs = [...$("invTable").querySelectorAll("tbody tr")].filter((tr) => tr.dataset.prod === k);
+  if (!trs.length) return;
+  clearTimeout(jumpTimer); $("invTable").querySelectorAll("tr.jump-hit").forEach((tr) => tr.classList.remove("jump-hit"));
+  trs[0].scrollIntoView({ behavior: "smooth", block: "start" });
+  trs.forEach((tr) => tr.classList.add("jump-hit"));
+  jumpTimer = setTimeout(() => trs.forEach((tr) => tr.classList.remove("jump-hit")), 3000);
+});
 
 function renderInventory() {
   const all = S.inventory.filter((i) => i.active && inScope(i.id));
@@ -1899,9 +1924,12 @@ function renderInventory() {
 
   const q = $("invSearch").value.trim().toLowerCase(); const cat = $("invCat").value; const only = $("invOnly").value;
   let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock) && (only !== "refill" || i.refill) && (only !== "overflow" || overflowOf(i) > 0));
-  rows.sort((a, b) => (b.low_stock - a.low_stock) || (!!b.refill - !!a.refill) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
+  // Each product's sizes stay together (Low and Refill are tagged in place, and Show → Low stock only lists just those), so Jump to finds them all in one spot.
+  rows.sort((a, b) => a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
+  const prods = new Map(); rows.forEach((i) => { if (!prods.has(prodKey(i))) prods.set(prodKey(i), itemName(i)); });
+  $("invJump").innerHTML = `<option value="">${prods.size ? "Choose a product…" : "No products listed"}</option>` + [...prods].map(([k, label]) => `<option value="${esc(k)}">${esc(label)}</option>`).join("");
   const tb = $("invTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${noReorder(i) && i.on_hand <= 0 ? ' <span class="pill out">Out</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${reorderCell(i)}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}" data-prod="${esc(prodKey(i))}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${noReorder(i) && i.on_hand <= 0 ? ' <span class="pill out">Out</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${reorderCell(i)}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
     : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => {
@@ -1910,6 +1938,43 @@ $("invTable").addEventListener("click", (e) => {
 });
 // How many of an item are boxed in overflow. 0 until the overflow SQL has been run.
 const overflowOf = (i) => i.overflow || 0;
+// Scan to adjust (admins): scanning a label opens Adjust for that item. The camera keeps running for the next label.
+$("invScanBtn").addEventListener("click", startInvScanner);
+$("invScanStopBtn").addEventListener("click", stopInvScanner);
+async function startInvScanner() {
+  if (!isAdmin()) return;
+  if (!window.Html5Qrcode) return toast("Scanner library didn't load. Check your connection.", true);
+  $("invScanBtn").style.display = "none"; $("invScanArea").style.display = "";
+  try {
+    S.invScanner = new Html5Qrcode("invReader");
+    await S.invScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 240, height: 240 } }, onInvScan, () => {});
+  } catch (e) {
+    await stopInvScanner();
+    toast("Couldn't open the camera. Allow camera access for this site.", true);
+  }
+}
+async function stopInvScanner() {
+  if (S.invScanner) { try { await S.invScanner.stop(); S.invScanner.clear(); } catch (_) {} S.invScanner = null; }
+  $("invScanArea").style.display = "none"; $("invScanBtn").style.display = "";
+}
+// Reads are ignored while a window is open. A label still in view after saving doesn't reopen
+// Adjust: it has to be out of view for 3 seconds first, so the next item is always a new scan.
+function onInvScan(code) {
+  const now = Date.now(), seen = S.invLastScan;
+  S.invLastScan = { code, t: now };
+  if ($("modalBg").classList.contains("open")) return;
+  if (code === seen.code && now - seen.t < 3000) return;
+  const sku = String(code).trim();
+  const it = S.items.find((i) => i.sku.toLowerCase() === sku.toLowerCase());
+  if (!it) return toast(`No item with SKU "${sku}".`, true);
+  if (!inScope(it.id)) return toast(S.testMode ? `Test mode is on, so only test items can be adjusted. Turn it off to adjust ${itemLabel(it)}.`
+    : `${itemLabel(it)} is a test item. Turn on test mode (Admin → Test mode) to use it.`, true);
+  if (!it.active) return toast(`${itemLabel(it)} is inactive.`, true);
+  if (!S.inventory.some((x) => x.id === it.id)) return toast(`${itemLabel(it)} isn't in the inventory list yet. Tap Refresh and scan again.`, true);
+  if (navigator.vibrate) navigator.vibrate(60);
+  openAdjust(it.id);
+}
+
 // The count is taken on the rack: with stock in overflow, that part is left out of the number asked for and added back on.
 function openAdjust(id) {
   const i = S.inventory.find((x) => x.id === id);
@@ -1917,12 +1982,14 @@ function openAdjust(id) {
   openModal(`<h2>Adjust count</h2><p>${esc(itemLabel(i))} · currently <strong>${rack}</strong> ${boxed ? `on the rack, plus <strong>${boxed}</strong> in overflow` : "on hand"}</p>
     <div class="field"><label for="adjNew">Actual count${boxed ? " on the rack" : ""}</label><input id="adjNew" type="number" inputmode="numeric" value="${rack}"></div>
     ${boxed ? `<p class="hint">Count only what's on the rack. To change the overflow count, use the Overflow button.</p>` : ""}
-    <div class="field"><label for="adjNotes">Reason</label><input id="adjNotes" placeholder="e.g. physical count, damaged, found in truck"></div>
+    <div class="field"><label for="adjNotes">Reason</label><input id="adjNotes" placeholder="e.g. physical count, damaged, found in truck" value="${esc(S.lastAdjustReason)}"></div>
     <div class="btn-row"><button class="btn primary" id="adjSave">Save adjustment</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
+  $("adjNew").focus(); $("adjNew").select();   // type the count straight away
   $("adjSave").addEventListener("click", async () => {
     const target = parseInt($("adjNew").value); if (isNaN(target) || target < 0) return toast("Enter the actual count.", true);
     const delta = target - rack; if (!delta) return closeModal();
     const notes = $("adjNotes").value.trim(); if (!notes) return toast("Give a short reason so the history makes sense later.", true);
+    S.lastAdjustReason = notes;   // offered again on the next Adjust, for a run of counts
     const { error } = await sb.from("transactions").insert({ type: "adjust", item_id: id, qty_change: delta, performed_by: S.session.user.id, notes });
     if (error) return fail(error, "Couldn't save adjustment");
     closeModal(); toast(`Set ${itemLabel(i)} to ${target}${boxed ? " on the rack" : ""}`); await refreshInventory(); loadActivity();
