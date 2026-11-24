@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261123205317">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261124193740">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -213,6 +213,8 @@ tr.low td { background: var(--orange-soft); }
 .pill.admin { background: var(--green); color: #fff; }
 .pill.checkout { background: var(--lime-soft); color: var(--ink); }
 .pill.test { background: var(--chip-bg); color: var(--chip-text); }
+.pill.out { background: var(--pill-off); color: var(--mute); }
+.pill.side { background: var(--pill-off); color: var(--ink-2); }
 .actions { white-space: nowrap; }
 .actions button { margin-right: 4px; }
 .empty { color: var(--mute); padding: 20px 0; text-align: center; }
@@ -245,6 +247,7 @@ tr.low td { background: var(--orange-soft); }
 .pick-group .pick-name { font-weight: 600; }
 .pick-group .pick-color { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
 .pick-group .pick-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pick-side { padding: 8px 12px; background: var(--pill-off); color: var(--ink-2); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
 .picklist .pick-sizes button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: auto; min-width: 64px; min-height: var(--tap); padding: 4px 10px; text-align: center;
   border: 1.5px solid var(--btn-border); border-radius: var(--radius); font-weight: 600; }
 .picklist .pick-sizes button:last-child { border-bottom: 1.5px solid var(--btn-border); }
@@ -290,6 +293,10 @@ tr.low td { background: var(--orange-soft); }
 .subnav button.active { background: var(--chip-bg); color: var(--chip-text); border-color: var(--chip-bg); }
 .subview { display: none; }
 .subview.active { display: block; }
+/* Inventory: Main / Side switch */
+.subnav .badge { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px;
+  background: var(--orange); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; }
+.as-needed { font-size: 13px; color: var(--mute); white-space: nowrap; }
 
 /* test mode */
 .test-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: var(--orange-soft); border-bottom: 1.5px solid var(--orange); padding: 8px 16px; font-size: 15px; }
@@ -498,6 +505,7 @@ tr.low td { background: var(--orange-soft); }
     <!-- ---------- INVENTORY ---------- -->
     <section class="view" id="view-inventory">
       <div class="view-head"><h2>Inventory</h2><button class="btn small" id="refreshInvBtn">Refresh</button></div>
+      <div class="subnav" id="invSideNav" style="display:none"><button data-side="main" class="active">Main inventory</button><button data-side="side">Side inventory<span class="badge" id="sideBadge" style="display:none"></span></button></div>
       <div class="stats admin-only" id="invStats"></div>
       <div class="panel quiet">
         <div class="row">
@@ -660,7 +668,8 @@ const S = {
   session: null, me: null, role: null,
   items: [], inventory: [], departments: [], users: [], adminUsers: [], invoices: [], aliases: [], ai: null, coding: null, cropClosed: null,
   cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
-  report: null, testMode: false, viewAsCheckout: false, testIds: new Set(), coFor: null, activity: []
+  report: null, testMode: false, viewAsCheckout: false, testIds: new Set(), coFor: null, activity: [],
+  invSide: false   // Inventory tab is showing side inventory
 };
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + (Number(n) || 0).toFixed(2);
@@ -834,9 +843,14 @@ function filterItems(q) {
 function renderPicklist(el, q, onPick) {
   const groups = new Map();
   filterItems(q).forEach((it) => { const k = it.name.trim().toLowerCase(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); });
-  const list = [...groups.values()].sort((a, b) => a[0].name.localeCompare(b[0].name)).slice(0, 40);
+  // Side inventory products (every size and colour in side inventory) go last, under their own heading.
+  const sideGroup = (items) => items.every(isSide);
+  const list = [...groups.values()].sort((a, b) => (sideGroup(a) - sideGroup(b)) || a[0].name.localeCompare(b[0].name)).slice(0, 40);
   el.innerHTML = list.length ? "" : `<div class="empty">No matching items.</div>`;
-  list.forEach((items) => {
+  list.forEach((items, n) => {
+    if (sideGroup(items) && (n === 0 || !sideGroup(list[n - 1]))) {
+      const h = document.createElement("div"); h.className = "pick-side"; h.textContent = "Side inventory"; el.appendChild(h);
+    }
     const g = document.createElement("div"); g.className = "pick-group";
     const cats = [...new Set(items.map((i) => i.category).filter(Boolean))];
     g.innerHTML = `<div class="pick-name">${esc(items[0].name)}${cats.length === 1 ? ` <span class="meta">· ${esc(cats[0])}</span>` : ""}</div>`;
@@ -1852,13 +1866,27 @@ function downloadCodingCsv(d) {
    ========================================================= */
 $("refreshInvBtn").addEventListener("click", async () => { await refreshInventory(); loadActivity(); toast("Inventory refreshed"); });
 ["invSearch", "invCat", "invOnly"].forEach((id) => $(id).addEventListener("input", renderInventory));
+$("invSideNav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.invSide = b.dataset.side === "side"; renderInventory(); });
+// Side inventory: items kept off the main list (ordered as needed, one-offs). Null side means the side inventory SQL hasn't run: main.
+const isSide = (i) => !!i.side;
+// No reorder point: ordered as needed, so never Low. Shown as "As needed", with an Out tag at 0.
+const noReorder = (i) => i.reorder_threshold == null;
+const reorderCell = (i) => noReorder(i) ? `<span class="as-needed">As needed</span>` : i.reorder_threshold;
 
 function renderInventory() {
-  const cats = [...new Set(S.items.filter((i) => inScope(i.id)).map((i) => i.category).filter(Boolean))].sort();
-  const sel = $("invCat"); const cur = sel.value;
-  sel.innerHTML = `<option value="">All</option>` + cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); sel.value = cur;
+  const all = S.inventory.filter((i) => i.active && inScope(i.id));
+  const hasSide = all.some(isSide);
+  if (!hasSide) S.invSide = false;
+  $("invSideNav").style.display = hasSide ? "" : "none";
+  $("invSideNav").querySelectorAll("button").forEach((b) => b.classList.toggle("active", (b.dataset.side === "side") === S.invSide));
+  const sideFlags = all.filter((i) => isSide(i) && (i.low_stock || i.refill)).length;   // side items with a reorder point can still need attention
+  $("sideBadge").textContent = sideFlags; $("sideBadge").style.display = sideFlags && !S.invSide ? "" : "none";
 
-  const active = S.inventory.filter((i) => i.active && inScope(i.id));
+  const active = all.filter((i) => isSide(i) === S.invSide);
+  const cats = [...new Set(active.map((i) => i.category).filter(Boolean))].sort();
+  const sel = $("invCat"); const cur = sel.value;
+  sel.innerHTML = `<option value="">All</option>` + cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); sel.value = cats.includes(cur) ? cur : "";
+
   const low = active.filter((i) => i.low_stock);
   const units = active.reduce((a, i) => a + i.on_hand, 0);
   const value = active.reduce((a, i) => a + i.on_hand * Number(i.unit_cost), 0);
@@ -1873,7 +1901,7 @@ function renderInventory() {
   let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock) && (only !== "refill" || i.refill) && (only !== "overflow" || overflowOf(i) > 0));
   rows.sort((a, b) => (b.low_stock - a.low_stock) || (!!b.refill - !!a.refill) || a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
   const tb = $("invTable").querySelector("tbody");
-  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${i.reorder_threshold}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${noReorder(i) && i.on_hand <= 0 ? ' <span class="pill out">Out</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${reorderCell(i)}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
     : `<tr><td colspan="7" class="empty">${S.items.some((i) => inScope(i.id)) ? "No items match." : S.testMode ? "No test items yet. Add one under Admin → Items while test mode is on." : "No items yet. Admins can add them under Admin → Items."}</td></tr>`;
 }
 $("invTable").addEventListener("click", (e) => {
@@ -2191,7 +2219,7 @@ $("testClearBtn").addEventListener("click", async () => {
    ========================================================= */
 function renderAdminItems() {
   const tb = $("adminItemsTable").querySelector("tbody");
-  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.color || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${i.reorder_threshold}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
+  tb.innerHTML = S.items.length ? S.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.category || "")}</td><td>${esc(i.color || "")}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num">${money(i.unit_cost)}</td><td class="num">${reorderCell(i)}</td><td><span class="pill ${i.active ? "ok" : "off"}">${i.active ? "Active" : "Inactive"}</span>${isSide(i) ? ' <span class="pill side">Side</span>' : ""}${i.is_test ? ' <span class="pill test">Test</span>' : ""}</td><td class="actions"><button class="btn small" data-edit="${i.id}">Edit</button><button class="btn small" data-toggle="${i.id}">${i.active ? "Deactivate" : "Reactivate"}</button>${i.active ? "" : `<button class="btn small danger" data-delete="${i.id}">Delete</button>`}</td></tr>`).join("")
     : `<tr><td colspan="9" class="empty">No items yet. Add one, or add one item per colour and size to build out a whole product at once.</td></tr>`;
 }
 $("adminItemsTable").addEventListener("click", async (e) => {
@@ -2209,19 +2237,34 @@ function openItemForm(it) {
     <p class="hint">Items with the same name are grouped when someone picks one, then chosen by colour and size. Leave the colour blank if the product only comes in one.</p>
     <datalist id="catList">${[...new Set(S.items.map((i) => i.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("")}</datalist>${colorDatalist()}
     <div class="field"><label for="fSku">SKU (goes on the label)</label><input id="fSku" value="${esc(it?.sku || "")}" placeholder="HV-VEST-C2-L" style="text-transform:uppercase"></div>
-    <div class="row"><div class="field narrow"><label for="fCost">Unit cost</label><input id="fCost" type="number" step="0.01" min="0" inputmode="decimal" value="${it ? Number(it.unit_cost).toFixed(2) : ""}"></div><div class="field narrow"><label for="fThr">Reorder when at or below</label><input id="fThr" type="number" min="0" inputmode="numeric" value="${it?.reorder_threshold ?? 5}"></div></div>
+    <div class="row"><div class="field narrow"><label for="fCost">Unit cost</label><input id="fCost" type="number" step="0.01" min="0" inputmode="decimal" value="${it ? Number(it.unit_cost).toFixed(2) : ""}"></div><div class="field narrow"><label for="fThr">Reorder when at or below</label><input id="fThr" type="number" min="0" inputmode="numeric" value="${it ? (it.reorder_threshold ?? "") : 5}" placeholder="As needed"></div></div>
+    ${stockingFields("f", it ? isSide(it) : false)}
+    ${(() => { const n = it ? siblingsOf(it).length : 0; return n ? `<label class="check" style="white-space:normal"><input type="checkbox" id="fAll">Also use this reorder point and side inventory setting for the rest of ${esc(it.name)} (${plural(n, "more item")})</label>` : ""; })()}
     ${(it ? it.is_test : S.testMode) ? `<p class="hint">${it ? "This is a test item" : "Test mode is on, so this will be a test item"}: it only shows in test mode and is left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="fSave">${it ? "Save changes" : "Add item"}</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("fName").focus();
   $("fSave").addEventListener("click", async () => {
-    const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, color: $("fColor").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, reorder_threshold: parseInt($("fThr").value) || 0 };
+    const row = { name: $("fName").value.trim(), category: $("fCat").value.trim() || null, color: $("fColor").value.trim() || null, size: $("fSize").value.trim() || null, sku: $("fSku").value.trim().toUpperCase(), unit_cost: Number($("fCost").value) || 0, ...stockingValues("f") };
     if (!row.name || !row.sku) return toast("Name and SKU are required.", true);
     if (!it && S.testMode) row.is_test = true;   // set only when adding, so an item with real history can't be hidden from reports later
     const { error } = it ? await sb.from("items").update(row).eq("id", it.id) : await sb.from("items").insert(row);
     if (error) return fail(error, error.code === "23505" ? "That SKU is already in use" : "Couldn't save item");
-    closeModal(); toast(it ? "Item saved" : "Item added"); await loadRefs();
+    const others = it && $("fAll")?.checked ? siblingsOf(it).map((i) => i.id) : [];
+    if (others.length) {
+      const { reorder_threshold, side } = row;
+      const { error: e2 } = await sb.from("items").update({ reorder_threshold, side }).in("id", others);
+      if (e2) { await loadRefs(); return fail(e2, "Item saved, but the other sizes and colours weren't changed"); }
+    }
+    closeModal(); toast(it ? (others.length ? `Saved ${plural(others.length + 1, "item")}` : "Item saved") : "Item added"); await loadRefs();
   });
 }
+// The other items of the same product (same name), real or test like this one.
+const siblingsOf = (it) => S.items.filter((i) => i.id !== it.id && !!i.is_test === !!it.is_test && i.name.trim().toLowerCase() === it.name.trim().toLowerCase());
+// Reorder point hint and the side inventory tick box, shared by the add/edit and the one-per-size forms. p is the id prefix.
+const stockingFields = (p, side) => `<p class="hint">Leave the reorder point blank for items ordered as needed: they're never flagged Low and never send a low-stock email.</p>
+    <label class="check" style="white-space:normal"><input type="checkbox" id="${p}Side" ${side ? "checked" : ""}>Side inventory</label>
+    <p class="hint">Side inventory items are listed apart from the main inventory (Inventory → Side inventory) and at the end of the check out list. Use it for items ordered as needed and one-offs. Everything else about them works as usual.</p>`;
+const stockingValues = (p) => { const t = $(p + "Thr").value.trim(); return { reorder_threshold: t === "" ? null : Math.max(0, parseInt(t) || 0), side: $(p + "Side").checked }; };
 $("bulkItemBtn").addEventListener("click", () => {
   openModal(`<h2>Add one item per colour and size</h2><p class="hint">Creates a separate item (and SKU) for every colour and size, so each gets its own label and count. They're grouped under one name when someone picks an item.</p>
     <div class="field"><label for="bName">Name</label><input id="bName" placeholder="Hi-Vis Class 3 Long Sleeve"></div>${colorDatalist()}
@@ -2229,7 +2272,8 @@ $("bulkItemBtn").addEventListener("click", () => {
     <div class="field"><label for="bColors">Colours, comma separated (optional)</label><input id="bColors" placeholder="Grey, Black" list="colorList"></div>
     <div class="field"><label for="bSizes">Sizes, comma separated</label><input id="bSizes" value="S, M, L, XL, 2XL, 3XL"></div>
     <p class="hint" id="bPreview"></p>
-    <div class="row"><div class="field narrow"><label for="bCost">Unit cost</label><input id="bCost" type="number" step="0.01" min="0" inputmode="decimal"></div><div class="field narrow"><label for="bThr">Reorder when at or below</label><input id="bThr" type="number" min="0" value="5"></div></div>
+    <div class="row"><div class="field narrow"><label for="bCost">Unit cost</label><input id="bCost" type="number" step="0.01" min="0" inputmode="decimal"></div><div class="field narrow"><label for="bThr">Reorder when at or below</label><input id="bThr" type="number" min="0" value="5" placeholder="As needed"></div></div>
+    ${stockingFields("b", false)}
     ${S.testMode ? `<p class="hint">Test mode is on, so these will be test items: they only show in test mode and are left out of every report.</p>` : ""}
     <div class="btn-row"><button class="btn primary" id="bSave">Add items</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("bName").focus();
@@ -2239,7 +2283,7 @@ $("bulkItemBtn").addEventListener("click", () => {
   const build = () => {
     const prefix = $("bPrefix").value.trim().toUpperCase(), sizes = list("bSizes"), colors = list("bColors");
     return (colors.length ? colors : [null]).flatMap((c) => sizes.map((sz) => ({ name: $("bName").value.trim(), category: $("bCat").value.trim() || null, color: c, size: sz,
-      sku: [prefix, c && skuPart(c), skuPart(sz)].filter(Boolean).join("-"), unit_cost: Number($("bCost").value) || 0, reorder_threshold: parseInt($("bThr").value) || 0 })));
+      sku: [prefix, c && skuPart(c), skuPart(sz)].filter(Boolean).join("-"), unit_cost: Number($("bCost").value) || 0, ...stockingValues("b") })));
   };
   const preview = () => { const r = $("bPrefix").value.trim() && list("bSizes").length ? build() : []; $("bPreview").textContent = r.length ? `${plural(r.length, "item")}: ${r.slice(0, 4).map((x) => x.sku).join(", ")}${r.length > 4 ? "…" : ""}` : ""; };
   ["bPrefix", "bColors", "bSizes"].forEach((id) => $(id).addEventListener("input", preview)); preview();

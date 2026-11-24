@@ -26,6 +26,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261118200000_fleet_services_black.sql` — makes every item with "Fleet Service" in its name Black and puts BL in its SKU in front of the size (`FS-SS-L` becomes `FS-SS-BL-L`). Their old labels won't scan afterwards, so reprint them. Safe to re-run. Don't re-run the earlier Fleet Services tees file after it.
 - `supabase/migrations/20261118210000_hivis_vest_cap_colors.sql` — colours for the starting items: Hi-Vis tees and sweatshirt become *High-Vis Yellow* (`HV-SS-L` → `SS-HVY-L`), safety vests *Yellow* (`RX-SV-L` → `SV-YL-L`) and the ball cap *Black* (`RX-BC` → `BC-BL`). The HV- and RX- in front are dropped, since the colour code says it. It also adds an *Orange* safety vest for every yellow one (`SV-OR-L`), copying its reorder point and starting cost, with 0 on hand. Their old labels won't scan afterwards, so reprint them. Test items are left alone. Safe to re-run. Don't re-run the starting product list file after it.
 - `supabase/migrations/20261123120000_overflow.sql` — overflow: the `apparel.overflow_moves` table, `apparel.items.overflow_location`, the `apparel.move_overflow()` function, the overflow columns on `apparel.inventory`, and the *refill* kind of low-stock alert. See "Overflow" below. Run once, the same way, before deploying `low-stock-alert` and pushing the page; safe to re-run.
+- `supabase/migrations/20261124120000_side_inventory.sql` — side inventory and items with no reorder point: `apparel.items.side`, a reorder point that can be blank, and `side` on `apparel.inventory`. The first run also moves every Fleet Services item to side inventory with no reorder point. See "Side inventory" below. Run once, the same way, before pushing the page; safe to re-run.
 - `supabase/migrations/20261118150000_drop_employees.sql` — deletes the `apparel.employees` table and `employee_id` on check outs, once check outs went by department. Can't be undone; safe to re-run.
 - `supabase/migrations/20261102210000_low_stock_alerts.sql` — low-stock emails: the `apparel.low_stock_alerts` queue, the triggers on `apparel.transactions` that fill it when a stock change takes an item down to its reorder point, and the claim function the email function uses. Turns on the `pg_net` extension. See "Low-stock emails" below. Run once, the same way.
 - `supabase/migrations/20261103120000_reorder_points_10.sql` — sets the reorder point of every item to 10, except ball caps and test items, which keep theirs. Changing a reorder point never sends a low-stock email. Run once, the same way; safe to re-run.
@@ -238,7 +239,7 @@ Setup, once, in this order:
 
 ## Low-stock emails
 
-When a stock change takes an item from above its reorder point to at or below it (the moment the Inventory tab starts flagging it **Low**), every active admin gets an email from the app's Gmail account. It lists the item, size, SKU, how many are left and the reorder point, with a link to the app. A check out that takes several items down at once sends one email listing them all. An item that stays low doesn't email again: it has to be restocked above its reorder point and drop again. Check outs, count adjustments and undoing a receipt can all set it off. Adding items, changing a reorder point and reactivating an item never do, and inactive items never email. To stop someone's emails, make them a checkout user or deactivate them (Admin → Users). An item with stock in overflow emails earlier, when its rack runs low: see "Overflow" below.
+When a stock change takes an item from above its reorder point to at or below it (the moment the Inventory tab starts flagging it **Low**), every active admin gets an email from the app's Gmail account. It lists the item, size, SKU, how many are left and the reorder point, with a link to the app. A check out that takes several items down at once sends one email listing them all. An item that stays low doesn't email again: it has to be restocked above its reorder point and drop again. Check outs, count adjustments and undoing a receipt can all set it off. Adding items, changing a reorder point and reactivating an item never do, and inactive items and items with no reorder point (see "Side inventory") never email. To stop someone's emails, make them a checkout user or deactivate them (Admin → Users). An item with stock in overflow emails earlier, when its rack runs low: see "Overflow" below.
 
 Test items email only the admin who made the change, with **[TEST]** at the start of the subject, so the whole thing can be tried in test mode without bothering anyone else. Clearing test activity never emails.
 
@@ -310,6 +311,26 @@ Setup, once, in this order:
 3. Push `index.html` to `main`.
 4. **Try it.** Turn on test mode and click **Clear test activity**. Receive 10 of one Test Product size, then use **Overflow** on the Inventory tab to move 6 to overflow: the row shows *4 on rack · 6 in overflow*. Check 2 out. The rack is now at 2, its reorder point, so the row is tagged **Refill** and a **[TEST] Refill from overflow** email reaches you within a minute. Clear test activity afterwards.
 
+## Side inventory
+
+For items that aren't kept stocked all the time: they're reordered when someone needs one, and a little lead time is fine. The Fleet Services shirts were the first; one-offs and odd items can go here too. Two separate settings on each item, under **Admin → Items → Edit** (and on *Add one item per colour and size*):
+
+- **No reorder point.** Leave *Reorder when at or below* blank. The item is ordered as needed: it's never flagged **Low** or **Refill**, never counts in the orange number on the Inventory tab, and never sends a low-stock email. Inventory and Admin → Items show *As needed* in the reorder column, and a grey **Out** tag when it reaches 0. Setting the reorder point to 0 isn't the same: 0 still flags **Low** once the item runs out.
+- **Side inventory.** Tick *Side inventory*. The Inventory tab gets a **Main inventory / Side inventory** switch at the top (shown once anything is in side inventory). Main, where it opens, leaves side items out; Side lists only them, with the same search, filters, Adjust and Overflow buttons. The figures at the top count only the list shown. A side item that does have a reorder point can still go Low: the orange number on the Side inventory button says how many need attention. In *Pick from list* on Check out (and the item search on Receive), side products come last, under a *Side inventory* heading. Admin → Items tags them **Side**.
+
+Everything else treats a side item like any other: scanning its label, receiving, reading packing slips and invoices, costs, chargeback reports and invoice coding reports.
+
+- **A whole product at once.** When editing one size, tick *Also use this reorder point and side inventory setting for the rest of …* to set every size and colour with the same name the same way.
+- **Fleet Services.** The SQL moved every item with "Fleet Service" in its name to side inventory and blanked its reorder point, the first time it ran. Running it again leaves items as they are.
+
+How it works: `apparel.items.side` (true for side inventory) and `apparel.items.reorder_threshold`, which can now be null. In `apparel.inventory`, `low_stock` is null for an item with no reorder point and `refill` is false; `side` is on the end. The low-stock trigger needed no change, since a blank reorder point never matches its "at or below" test.
+
+Setup, once, in this order:
+
+1. Run `supabase/migrations/20261124120000_side_inventory.sql` in the SQL Editor. Its results list the items now in side inventory, with a blank reorder point.
+2. Push `index.html` to `main`.
+3. **Try it.** Open Inventory: Fleet Services is gone from the main list and under **Side inventory**, with *As needed* in the reorder column. In *Pick from list* on Check out, it's at the bottom under *Side inventory*.
+
 ## Check out by department
 
 A check out records only the item, the quantity and the department it is charged to. Who it was for isn't asked: every check out already records who did it, and that person can say who it was for if it ever matters. Reports, recent activity and invoice coding reports show *Checked out by* where they used to show the employee.
@@ -354,7 +375,7 @@ Setup, once, in this order: run `supabase/migrations/20261118190000_item_colors.
 
 - **Check out** — scan labels (or pick from the list), set quantities, check the summary, confirm. Each item is charged to your own department unless you pick another in its *Charge to* dropdown.
 - **Receive** — read a packing slip to add what arrived, and read the invoice when it comes to set costs. *Receive one item* is there for anything else; entering a unit cost there also updates the item's current cost, which future checkouts are charged at.
-- **Inventory** — on-hand counts with low-stock items flagged first, and how much of each is on the rack or boxed in overflow. Admins can adjust counts after a physical check, move stock to and from overflow, and undo mistaken transactions.
+- **Inventory** — on-hand counts with low-stock items flagged first, and how much of each is on the rack or boxed in overflow. Items ordered as needed (Fleet Services, one-offs) are under *Side inventory*. Admins can adjust counts after a physical check, move stock to and from overflow, and undo mistaken transactions.
 - **Reports** — chargebacks by department for any date range, including vendor set-up fees under department 10, with CSV download.
 - **Display** — the half-circle button in the top bar picks Auto (follows the phone or computer's own light/dark setting), Light or Dark. Each device remembers its own choice. Printed labels are always black on white. Colours live as variables at the top of the `<style>` block, light first and then the dark overrides; a new screen should use those variables rather than fixed colours so it works in both.
 

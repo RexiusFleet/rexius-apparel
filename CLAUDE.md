@@ -20,9 +20,10 @@ This repository is public. Never commit secrets, passwords or personal email add
 
 ## Data model (`apparel` schema)
 
-- **`items`:** one row per SKU, colour and size, with `color` (optional), `unit_cost`, `reorder_threshold`, `active` and `is_test`. Items with the same name are one product in the picker, grouped by colour then size.
+- **`items`:** one row per SKU, colour and size, with `color` (optional), `unit_cost`, `reorder_threshold`, `side`, `active` and `is_test`. Items with the same name are one product in the picker, grouped by colour then size.
+- **No reorder point and side inventory:** `reorder_threshold` can be null, meaning order as needed: never Low or Refill, never emailed, shown as *As needed*. `side` true lists the item under Inventory → Side inventory and last in the picker, and changes nothing else. Fleet Services items have both since 2026-11-24.
 - **`transactions`:** stock is the sum of `qty_change`. A checkout is negative, a receive positive, and an adjust is non-zero. A checkout needs a `department_id`. `performed_by` is who it's for: themselves for checkout users, anyone for admins. `entered_by` is who actually entered it, set by a trigger.
-- **`inventory` view:** gives `on_hand` and `low_stock`, which is `on_hand <= reorder_threshold`. The app shows that flag as **Low**.
+- **`inventory` view:** gives `on_hand` and `low_stock`, which is `on_hand <= reorder_threshold` (null with no reorder point). The app shows that flag as **Low**.
 - **Overflow:** extra stock boxed off the rack. It is still part of `on_hand`. `overflow_moves` holds the moves (`qty` positive into overflow), written only by `apparel.move_overflow()`, admin-only. The `inventory` view adds `overflow`, `on_rack`, `refill` (rack at or below the reorder point with overflow left, shown as **Refill**) and `overflow_location`. Transactions, costs and reports never see it.
 - **`invoices`:** every vendor document, not just invoices. `doc_type` is `packing_slip`, `invoice` or `other`.
   - A packing slip adds stock and never changes cost (`apparel.receive_packing_slip`).
