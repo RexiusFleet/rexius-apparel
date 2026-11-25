@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261124195242">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261125150052">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -204,6 +204,13 @@ th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line
 th { font-weight: 600; color: var(--ink-2); font-size: 14px; border-bottom: 1.5px solid var(--line-strong); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.low td { background: var(--orange-soft); }
+/* Column headings that sort the Inventory list: ↕ unsorted, ↑ smallest first, ↓ largest first. */
+th .sort { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+th .sort::after { content: "↕"; margin-left: 4px; opacity: .4; }
+th .sort:hover, th[aria-sort] .sort { color: var(--green-text); }
+th[aria-sort] .sort::after { opacity: 1; }
+th[aria-sort="ascending"] .sort::after { content: "↑"; }
+th[aria-sort="descending"] .sort::after { content: "↓"; }
 #invTable tbody tr { scroll-margin-top: 12px; }
 tr.jump-hit td { background: var(--lime-soft); }   /* Jump to: the product's rows, for a moment */
 tr.jump-hit td:first-child { box-shadow: inset 4px 0 0 var(--brand); }
@@ -522,11 +529,12 @@ tr.jump-hit td:first-child { box-shadow: inset 4px 0 0 var(--brand); }
           <div class="field narrow"><label for="invCat">Category</label><select id="invCat"><option value="">All</option></select></div>
           <div class="field narrow"><label for="invOnly">Show</label><select id="invOnly"><option value="all">All items</option><option value="low">Low stock only</option><option value="refill">Refill from overflow</option><option value="overflow">In overflow</option></select></div>
         </div>
-        <div class="table-wrap"><table id="invTable"><thead><tr><th>Item</th><th>Size</th><th>SKU</th><th class="num">On hand</th><th class="num">Reorder at</th><th class="num admin-only">Unit cost</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table id="invTable"><thead><tr><th><button class="sort" type="button" data-sort="item">Item</button></th><th><button class="sort" type="button" data-sort="size">Size</button></th><th><button class="sort" type="button" data-sort="sku">SKU</button></th><th class="num"><button class="sort" type="button" data-sort="on_hand">On hand</button></th><th class="num"><button class="sort" type="button" data-sort="reorder">Reorder at</button></th><th class="num admin-only"><button class="sort" type="button" data-sort="cost">Unit cost</button></th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
       <div class="panel quiet admin-only">
         <h3>Recent activity</h3>
         <div class="table-wrap"><table id="actTable"><thead><tr><th>When</th><th>What</th><th>Item</th><th class="num">Qty</th><th>Details</th><th>By</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="btn-row" id="actMoreRow" style="display:none"><button class="btn small" id="actMoreBtn" type="button" aria-expanded="false"></button></div>
       </div>
     </section>
 
@@ -679,6 +687,8 @@ const S = {
   cart: [], rcvItem: null, scanner: null, lastScan: { code: null, t: 0 },   // cart lines: { item, qty, dept }
   report: null, testMode: false, viewAsCheckout: false, testIds: new Set(), coFor: null, activity: [],
   invSide: false,   // Inventory tab is showing side inventory
+  invSort: { key: null, dir: 1 },   // Inventory column sort; no key = product order
+  actOpen: false,   // Recent activity is showing more than the newest few
   invScanner: null, invLastScan: { code: null, t: 0 }, lastAdjustReason: ""   // Scan to adjust, and the reason last typed in Adjust
 };
 const $ = (id) => document.getElementById(id);
@@ -1898,6 +1908,29 @@ $("invJump").addEventListener("change", (e) => {
   jumpTimer = setTimeout(() => trs.forEach((tr) => tr.classList.remove("jump-hit")), 3000);
 });
 
+// Sorting by a column heading: first click smallest first, second largest first, third back to product order.
+// Ties stay in product order. Items with no reorder point go last either way.
+const byProduct = (a, b) => a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b);
+const INV_SORTS = {
+  item: (a, b) => a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)),
+  size: bySize,
+  sku: (a, b) => String(a.sku || "").localeCompare(String(b.sku || ""), undefined, { numeric: true }),
+  on_hand: (a, b) => a.on_hand - b.on_hand,
+  reorder: (a, b) => a.reorder_threshold - b.reorder_threshold,
+  cost: (a, b) => Number(a.unit_cost) - Number(b.unit_cost),
+};
+function sortInventory(rows) {
+  const { key, dir } = S.invSort; const cmp = INV_SORTS[key];
+  if (!cmp) return rows.sort(byProduct);
+  return rows.sort((a, b) => (key === "reorder" && noReorder(a) !== noReorder(b) ? noReorder(a) - noReorder(b) : key === "reorder" && noReorder(a) ? 0 : dir * cmp(a, b)) || byProduct(a, b));
+}
+$("invTable").querySelector("thead").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-sort]"); if (!b) return;
+  const cur = S.invSort;
+  S.invSort = cur.key !== b.dataset.sort ? { key: b.dataset.sort, dir: 1 } : cur.dir === 1 ? { key: cur.key, dir: -1 } : { key: null, dir: 1 };
+  renderInventory();
+});
+
 function renderInventory() {
   const all = S.inventory.filter((i) => i.active && inScope(i.id));
   const hasSide = all.some(isSide);
@@ -1924,9 +1957,15 @@ function renderInventory() {
 
   const q = $("invSearch").value.trim().toLowerCase(); const cat = $("invCat").value; const only = $("invOnly").value;
   let rows = active.filter((i) => (!q || `${i.name} ${colorOf(i)} ${i.size || ""} ${i.sku}`.toLowerCase().includes(q)) && (!cat || i.category === cat) && (only !== "low" || i.low_stock) && (only !== "refill" || i.refill) && (only !== "overflow" || overflowOf(i) > 0));
-  // Each product's sizes stay together (Low and Refill are tagged in place, and Show → Low stock only lists just those), so Jump to finds them all in one spot.
-  rows.sort((a, b) => a.name.localeCompare(b.name) || colorOf(a).localeCompare(colorOf(b)) || bySize(a, b));
-  const prods = new Map(); rows.forEach((i) => { if (!prods.has(prodKey(i))) prods.set(prodKey(i), itemName(i)); });
+  // Jump to always lists products in product order, whatever the list is sorted by.
+  const prods = new Map(); rows.sort(byProduct).forEach((i) => { if (!prods.has(prodKey(i))) prods.set(prodKey(i), itemName(i)); });
+  // Unsorted, each product's sizes stay together (Low and Refill are tagged in place, and Show → Low stock only lists just those), so Jump to finds them all in one spot.
+  sortInventory(rows);
+  $("invTable").querySelectorAll("thead [data-sort]").forEach((b) => {
+    const on = b.dataset.sort === S.invSort.key;
+    if (on) b.parentElement.setAttribute("aria-sort", S.invSort.dir === 1 ? "ascending" : "descending"); else b.parentElement.removeAttribute("aria-sort");
+    b.title = on ? (S.invSort.dir === 1 ? "Sorted smallest first. Click for largest first." : "Sorted largest first. Click to go back to product order.") : "Sort by this column";
+  });
   $("invJump").innerHTML = `<option value="">${prods.size ? "Choose a product…" : "No products listed"}</option>` + [...prods].map(([k, label]) => `<option value="${esc(k)}">${esc(label)}</option>`).join("");
   const tb = $("invTable").querySelector("tbody");
   tb.innerHTML = rows.length ? rows.map((i) => `<tr class="${i.low_stock ? "low" : ""}" data-prod="${esc(prodKey(i))}"><td>${esc(itemName(i))}</td><td>${esc(i.size || "")}</td><td>${esc(i.sku)}</td><td class="num"><strong>${i.on_hand}</strong>${i.low_stock ? ' <span class="pill low">Low</span>' : ""}${i.refill ? ' <span class="pill refill">Refill</span>' : ""}${noReorder(i) && i.on_hand <= 0 ? ' <span class="pill out">Out</span>' : ""}${overflowOf(i) ? `<div class="inv-split">${i.on_rack} on rack · ${i.overflow} in overflow${i.overflow_location ? ` (${esc(i.overflow_location)})` : ""}</div>` : ""}</td><td class="num">${reorderCell(i)}</td><td class="num admin-only">${money(i.unit_cost)}</td><td class="actions">${isAdmin() ? `<button class="btn small" data-adjust="${i.id}">Adjust</button><button class="btn small" data-overflow="${i.id}">Overflow</button>` : ""}</td></tr>`).join("")
@@ -2039,6 +2078,16 @@ async function loadActivity() {
   if (error) return fail(error, "Couldn't load activity");
   if (!S.users.length) await loadUserNames();
   S.activity = data;
+  renderActivity();
+}
+// The newest few show; the rest sit behind a button, closed until it's clicked (and closed again on the next visit).
+const ACT_SHOWN = 3;
+function renderActivity() {
+  const data = S.actOpen ? S.activity : S.activity.slice(0, ACT_SHOWN);
+  const older = S.activity.length - ACT_SHOWN;
+  $("actMoreRow").style.display = older > 0 ? "" : "none";
+  $("actMoreBtn").textContent = S.actOpen ? "Hide earlier activity" : `Show earlier activity (${older} more)`;
+  $("actMoreBtn").setAttribute("aria-expanded", S.actOpen);
   const tb = $("actTable").querySelector("tbody");
   tb.innerHTML = data.length ? data.map((t) => {
     const what = { checkout: "Checked out", receive: "Received", adjust: "Adjusted" }[t.type];
@@ -2047,6 +2096,7 @@ async function loadActivity() {
     return `<tr><td>${fmtWhen(t.created_at)}</td><td>${what}</td><td>${esc(t.item ? itemLabel(t.item) : "")}</td><td class="num">${t.qty_change > 0 ? "+" : ""}${t.qty_change}</td><td>${details}</td><td>${esc(userName(t.performed_by) || "—")}${enteredBy(t)}</td><td class="actions">${isAdmin() && t.type === "checkout" ? `<button class="btn small" data-edit-tx="${t.id}">Edit</button>` : ""}${isAdmin() ? `<button class="btn small danger" data-del="${t.id}"${t.report_id ? ' data-coded="1"' : ""}>Undo</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="7" class="empty">No ${S.testMode ? "test " : ""}activity yet.</td></tr>`;
 }
+$("actMoreBtn").addEventListener("click", () => { S.actOpen = !S.actOpen; renderActivity(); });
 $("actTable").addEventListener("click", async (e) => {
   const iv = e.target.closest("[data-inv]"); if (iv) { if (!S.invoices.length) await loadInvoices(); return openInvoice(iv.dataset.inv); }
   const ed = e.target.closest("[data-edit-tx]"); if (ed) return openEditCheckout(S.activity.find((t) => t.id === ed.dataset.editTx), loadActivity);
