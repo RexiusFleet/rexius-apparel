@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261125150052">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261126034816">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2021,15 +2021,15 @@ function openAdjust(id) {
   openModal(`<h2>Adjust count</h2><p>${esc(itemLabel(i))} · currently <strong>${rack}</strong> ${boxed ? `on the rack, plus <strong>${boxed}</strong> in overflow` : "on hand"}</p>
     <div class="field"><label for="adjNew">Actual count${boxed ? " on the rack" : ""}</label><input id="adjNew" type="number" inputmode="numeric" value="${rack}"></div>
     ${boxed ? `<p class="hint">Count only what's on the rack. To change the overflow count, use the Overflow button.</p>` : ""}
-    <div class="field"><label for="adjNotes">Reason</label><input id="adjNotes" placeholder="e.g. physical count, damaged, found in truck" value="${esc(S.lastAdjustReason)}"></div>
+    <div class="field"><label for="adjNotes">Reason (optional)</label><input id="adjNotes" placeholder="e.g. damaged, found in truck" value="${esc(S.lastAdjustReason)}"></div>
     <div class="btn-row"><button class="btn primary" id="adjSave">Save adjustment</button><button class="btn" onclick="closeModal()">Cancel</button></div>`);
   $("adjNew").focus(); $("adjNew").select();   // type the count straight away
   $("adjSave").addEventListener("click", async () => {
     const target = parseInt($("adjNew").value); if (isNaN(target) || target < 0) return toast("Enter the actual count.", true);
     const delta = target - rack; if (!delta) return closeModal();
-    const notes = $("adjNotes").value.trim(); if (!notes) return toast("Give a short reason so the history makes sense later.", true);
+    const notes = $("adjNotes").value.trim();   // optional: a plain recount needs no explanation
     S.lastAdjustReason = notes;   // offered again on the next Adjust, for a run of counts
-    const { error } = await sb.from("transactions").insert({ type: "adjust", item_id: id, qty_change: delta, performed_by: S.session.user.id, notes });
+    const { error } = await sb.from("transactions").insert({ type: "adjust", item_id: id, qty_change: delta, performed_by: S.session.user.id, notes: notes || null });
     if (error) return fail(error, "Couldn't save adjustment");
     closeModal(); toast(`Set ${itemLabel(i)} to ${target}${boxed ? " on the rack" : ""}`); await refreshInventory(); loadActivity();
   });
