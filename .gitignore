@@ -3,3 +3,6 @@ supabase/.temp/
 supabase/.branches/
 .env
 .env.*
+
+# Installed by `npm install` in testing/sql
+node_modules/

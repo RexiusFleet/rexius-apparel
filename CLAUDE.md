@@ -11,7 +11,7 @@ This repository is public. Never commit secrets, passwords or personal email add
   - Everything for this app is in the `apparel` schema.
   - Don't change project-wide settings.
   - Don't send requests to the project from tests; it's live data.
-- **`index.html`:** the whole front end, with no build step. Colours are CSS variables, with light values first and dark overrides after.
+- **`index.html`:** the whole front end, with no build step. Its three CDN `<script>` tags carry `integrity` fingerprints: change a version and its fingerprint together, and only use files the package itself ships (README, Outside libraries). Colours are CSS variables, with light values first and dark overrides after.
 - **`supabase/migrations/`:** SQL files, run by hand in the SQL Editor in date order. Write them to be safe to re-run.
 - **`supabase/functions/`:** Edge Functions. Gateway settings are in `supabase/config.toml`, and all deploy with `--no-verify-jwt`.
   - `admin-users`: admin-only user management, including each user's department.
@@ -48,7 +48,8 @@ This repository is public. Never commit secrets, passwords or personal email add
 ## Testing
 
 - **No local Deno:** test pure logic with Node, for example `node supabase/functions/invoice-extract/spread.test.ts` and `node supabase/functions/low-stock-alert/message.test.ts`.
-- **SQL:** an in-memory Postgres works (PGlite from npm, installed in a scratch folder), with stubs for Supabase's `auth` schema and `net.http_post`.
+- **SQL:** `node testing/sql/run.test.mjs` (run `npm install` in `testing/sql` once). It builds the whole database in an in-memory Postgres (PGlite) from `sql_history/apparel_schema_public.sql` and every migration in date order, with stand-ins for Supabase's `auth`, `storage` and `net.http_post`, then checks permissions, costs, alerts, overflow and coding reports. Add a test there with any SQL change.
+- **Don't trust "safe to re-run" on an old migration.** Later files replace earlier functions and views. Check with `rerun()` in `testing/sql/harness.mjs` before saying a file can be run again.
 - **Sample documents:** `testing/test-packing-slip.pdf` and `testing/test-invoice.pdf`, rebuilt by `python3 testing/make_test_documents.py`.
 - **Test mode** (Admin → Test mode) keeps test items, departments and documents apart from real data. Use it to try a feature end to end. The Test Product (`TEST-S`, `TEST-M`, `TEST-L`) has a reorder point of 2.
 

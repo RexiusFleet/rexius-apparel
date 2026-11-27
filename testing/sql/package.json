@@ -1,0 +1,8 @@
+{
+  "name": "rexius-apparel-sql-tests",
+  "private": true,
+  "description": "Runs the app's SQL files in an in-memory Postgres (PGlite) and checks the rules that handle money and stock. Never touches the live Supabase project.",
+  "type": "module",
+  "scripts": { "test": "node run.test.mjs" },
+  "dependencies": { "@electric-sql/pglite": "0.6.0" }
+}

@@ -1,4 +1,14 @@
 -- ============================================================
+-- DO NOT RE-RUN on a project that has had
+-- 20261118120000_checkout_by_department.sql. That file replaced
+-- coding_report() below with a newer version. Running this one again
+-- would put the old function back without any error, and it reads
+-- the employees table, which has since been deleted, so every coding
+-- report would then fail ("relation apparel.employees does not
+-- exist"). If that ever happens, run the check out by department
+-- file again: it puts the current function back. Kept for a new
+-- project, run in date order.
+-- ============================================================
 -- Invoice coding reports.
 --
 -- Stock is bought ahead and invoiced as it arrives; departments
@@ -29,7 +39,8 @@
 --     saved report. Runs as the caller, so admin-only row-level
 --     security still applies.
 --
--- Safe to re-run.
+-- Safe to re-run only until the check out by department file has
+-- run (see the note at the top).
 -- ============================================================
 
 begin;

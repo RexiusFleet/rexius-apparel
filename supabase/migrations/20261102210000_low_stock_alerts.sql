@@ -40,7 +40,11 @@
 --
 -- Needs the pg_net extension; the first statement turns it on. If
 -- that statement fails, turn on pg_net under Database -> Extensions
--- and run this file again. Safe to re-run.
+-- and run this file again. Safe to re-run until
+-- 20261123120000_overflow.sql has run. After that, running this
+-- file again stops with an error ("cannot change return type of
+-- existing function") and changes nothing: the overflow file holds
+-- the current versions of the two functions below.
 -- ============================================================
 
 begin;

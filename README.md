@@ -36,6 +36,7 @@ If the repository ever moves again, update the `ALLOWED_ORIGINS` list in both Ed
 - `supabase/migrations/20261104120000_packing_slips_and_invoice_costs.sql` — packing slips and invoices: document type, order number and set-up fees on `apparel.invoices`, the `apparel.cost_updates` history, display columns on vendor matches, and the two database functions that receive a packing slip or apply an invoice's costs all at once. See "Packing slips and invoices" below. Run once, the same way, before deploying the `invoice-extract` function that goes with it; safe to re-run.
 - `supabase/migrations/20261103150000_fleet_services_tees.sql` — adds the Fleet Services short- and long-sleeve tees in S–4XL (14 items, `FS-SS-*` and `FS-LS-*`, category Shirt, reorder point 12). Run once, the same way; safe to re-run until the Fleet Services black file below has run.
 - `testing/` — `test-packing-slip.pdf` and `test-invoice.pdf`, a made-up vendor's packing list and invoice for trying packing slip and invoice reading in test mode, and `make_test_documents.py`, which rebuilds both (`python3 testing/make_test_documents.py`). Deploy this folder alongside `index.html`; the app links to the PDFs.
+- `testing/sql/` — tests for the rules that live in the database (who can do what, stock and cost, low-stock alerts, overflow, coding reports), run against an in-memory copy built from the SQL files in this repo. See "Tests" below.
 - `supabase/migrations/20261027200000_vendor_aliases.sql` — vendor line matches for automatic document reading (`apparel.vendor_aliases`, admin-only). Run once, the same way.
 - `supabase/migrations/20261027190000_vendor_invoices.sql` — vendor invoices: creates the private `apparel-invoices` Storage bucket (25 MB per file, PDF/JPEG/PNG/HEIC/WebP), the `apparel.invoices` table and the `invoice_id` link on receive transactions, all admin-only. Run once, the same way.
 - `supabase/migrations/20261027180000_drop_employee_no.sql` — drops the employee-number column. Run once, the same way, on a project that was set up before it existed. (Employees themselves are no longer used; see "Check out by department".)
@@ -133,6 +134,13 @@ People keep the app open for days, often installed on a phone's home screen or t
 - **When it checks:** 3 seconds after the page opens, every time the app comes back to the front, and every 5 minutes while it's showing. Each check downloads `index.html` fresh (no cache) and compares stamps. GitHub Pages takes a minute or two after a push, so an open app typically updates within about 5 minutes, or straight away the next time it's opened.
 - **What happens:** if nobody's in the middle of anything, the app reloads itself straight onto the new version, using an address with `?v=<stamp>` so no cache can hand back the old page. It tidies the `?v=` away afterwards. If someone is mid-task (items in the check out cart, a dialog open, a scanner on, a packing slip or invoice under review, or typing in a box), it shows a **"A new version of the app is ready. Reload"** bar at the top instead, and reloads by itself at the next check once they're done.
 - **Never loops:** if a reload somehow lands on the old page again, it shows the bar rather than reloading a second time.
+
+### Outside libraries
+
+`index.html` loads three libraries from public CDNs: Supabase's client, the QR scanner and the QR label maker. Each `<script>` tag near the top is pinned to one version and carries a fingerprint (`integrity="sha384-…"`), so a browser refuses a copy that has been changed in any way.
+
+- **Changing a version:** change the address and the fingerprint together, or the library won't load and the app won't start. The fingerprint is `curl -s <address> | openssl dgst -sha384 -binary | openssl base64 -A`, with `sha384-` in front.
+- **Use files the package itself ships.** jsDelivr can also make a `.min.js` on the fly for a file that has none (it did for `supabase.min.js`), and such a file can change, so the page uses `supabase.js`, which is the same code.
 
 The anon key is safe to publish: it only grants what the row-level security policies allow, and nothing is readable without an authenticated login that has an active row in `apparel.app_users`.
 
@@ -387,6 +395,19 @@ The Inventory list is in product order: each product's sizes are together, in si
 
 Under the Inventory list, admins see the three newest stock changes. **Show earlier activity** opens the rest (the newest 60 in all) and **Hide earlier activity** closes it again. It starts closed each time the app is opened, and stays the way you left it while you undo or edit entries.
 
+## Tests
+
+None of these touch the live Supabase project.
+
+- **Document reading and email wording** (plain Node, nothing to install):
+  - `node supabase/functions/invoice-extract/spread.test.ts`
+  - `node supabase/functions/low-stock-alert/message.test.ts`
+- **Database rules** (`testing/sql/`). The first time, run `npm install` inside `testing/sql`; after that, `node testing/sql/run.test.mjs`. It ends with `all … SQL tests passed`.
+  - `harness.mjs` builds the whole database in memory the way a new project is set up: `sql_history/apparel_schema_public.sql`, then every file in `supabase/migrations/` in date order. Supabase's own parts (logins, storage, the call to the email function) are stood in for. So a new SQL file is tested just by being in the folder, and a file that breaks the build fails every test.
+  - `run.test.mjs` checks what each kind of user can and can't do, that a check out is charged at the item's current cost, that packing slips add stock and invoices set cost, when low-stock and refill alerts are queued, overflow moves, and that coding reports add up to the invoice total and never claim a check out twice.
+  - One-off data fixes that need a real sign-in (`20261125120000_safety_vests_to_50.sql`) are left out; the list is at the top of `harness.mjs`.
+- **Old SQL files run again by mistake.** The tests also pin down what happens: most stop with an error and change nothing. The exception is `20261110120000_invoice_coding_reports.sql`, which runs without an error and breaks coding reports; running `20261118120000_checkout_by_department.sql` again repairs them. That file has a warning at the top.
+
 ## Day to day
 
 - **Check out** — scan labels (or pick from the list), set quantities, check the summary, confirm. Each item is charged to your own department unless you pick another in its *Charge to* dropdown.
@@ -397,4 +418,4 @@ Under the Inventory list, admins see the three newest stock changes. **Show earl
 
 ## Later: annual apparel program
 
-The `items.program` column already exists (`highvis` now). Phase 2 adds `annual` items, an allowance table per employee tier, and a balance check at checkout.
+The `items.program` column already exists (`highvis` now). Phase 2 adds `annual` items, an allowance table per tier of user, and a balance check at checkout.
