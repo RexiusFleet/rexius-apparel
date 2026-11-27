@@ -395,6 +395,17 @@ The Inventory list is in product order: each product's sizes are together, in si
 
 Under the Inventory list, admins see the three newest stock changes. **Show earlier activity** opens the rest (the newest 60 in all) and **Hide earlier activity** closes it again. It starts closed each time the app is opened, and stays the way you left it while you undo or edit entries.
 
+## Backups
+
+Stock isn't stored as a number anywhere: it is the sum of every row in `apparel.transactions`. So the database backup is what protects the counts, the costs and the chargeback history.
+
+- **What there is.** Supabase backs the whole project database up once a day and keeps the last several days. Checked on 2026-11-27: seven daily backups were listed, the newest from that morning's run.
+- **Where to look.** Supabase dashboard → the project → **Database** → **Backups** → **Scheduled backups**. Each backup has a **Restore** button. Worth a glance now and then to see the newest one is from the last day.
+- **What a restore loses.** Everything since that backup was taken, so up to a day of check outs, receives and adjustments. Write down what was done since (Inventory → Recent activity, if the app still opens) before restoring, and enter it again afterwards.
+- **A restore covers the whole project, not just this app.** The project is shared with another app, and **Restore** takes its data back to the same moment too. Don't press it for an apparel problem without agreeing it with whoever runs the other app. For getting back something deleted by mistake, **Restore to new project** on the same page makes a separate copy to look in and copy rows out of, and leaves the live project alone.
+- **Scanned documents are not in the backup.** The packing slip and invoice files live in the `apparel-invoices` Storage bucket, and Supabase's page says so itself: storage objects are not included. A deleted file is gone for good. Stock, costs and coding reports don't need the files (everything read from them is saved in the database), but keep the paper or the vendor's email for anything accounting may ask to see again.
+- **The code and the SQL files** are in this repository on GitHub, which is its own copy. A database built from nothing but these files has the starting items and no history.
+
 ## Tests
 
 None of these touch the live Supabase project.

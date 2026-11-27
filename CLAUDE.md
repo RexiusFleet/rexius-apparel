@@ -10,6 +10,7 @@ This repository is public. Never commit secrets, passwords or personal email add
 - **Supabase project:** `hibjqcgitqtgmkurghlw`, shared with another app.
   - Everything for this app is in the `apparel` schema.
   - Don't change project-wide settings.
+  - Supabase backs the database up daily (README, Backups). A restore rolls back the other app too, and the document files in Storage are not backed up.
   - Don't send requests to the project from tests; it's live data.
 - **`index.html`:** the whole front end, with no build step. Its three CDN `<script>` tags carry `integrity` fingerprints: change a version and its fingerprint together, and only use files the package itself ships (README, Outside libraries). Colours are CSS variables, with light values first and dark overrides after.
 - **`supabase/migrations/`:** SQL files, run by hand in the SQL Editor in date order. Write them to be safe to re-run.
