@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="app-version" content="20261126034816">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
+<meta name="app-version" content="20261127063653">   <!-- set on every commit by .githooks/pre-commit; open apps reload when it changes -->
 <title>Rexius Apparel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -763,20 +763,28 @@ $("signOutBtn").addEventListener("click", async () => {
   }
 });
 
+// Supabase reports a sign-in again every time the app comes back to the front, and again when the login is
+// renewed (about hourly). Only the first one for a person opens Check out; later ones just refresh the data,
+// so nobody is pulled off the screen they were on.
+let bootedFor = null;
 sb.auth.onAuthStateChange((_evt, session) => {
   S.session = session;
-  if (session) boot(); else showLogin();
+  if (!session) return showLogin();
+  const first = bootedFor !== session.user.id;
+  bootedFor = session.user.id;
+  boot(first);
 });
 
 function showLogin() {
+  bootedFor = null;
   $("appShell").style.display = "none"; $("loginView").style.display = "flex";
   S.me = null; S.role = null; S.testMode = false; S.viewAsCheckout = false;
   try { sessionStorage.removeItem(TEST_MODE_KEY); sessionStorage.removeItem(VIEW_AS_KEY); } catch (_) {}
 }
 
-async function boot() {
+async function boot(first = true) {
   const { data, error } = await sb.from("app_users").select("*").eq("user_id", S.session.user.id).maybeSingle();
-  if (error) return fail(error, "Couldn't load your account");
+  if (error) { if (first) bootedFor = null; return fail(error, "Couldn't load your account"); }   // a failed start is tried again in full
   if (!data || !data.active) {
     $("loginMsg").textContent = "Your login works, but this account isn't set up for the apparel app yet. Ask an admin to add you.";
     await sb.auth.signOut(); return;
@@ -788,7 +796,7 @@ async function boot() {
   applyRole();
   $("loginView").style.display = "none"; $("appShell").style.display = "flex";
   await loadRefs();
-  showView("checkout");
+  if (first) showView("checkout");
 }
 
 // Shows or hides everything that depends on the role the screens are showing (see isAdmin).
@@ -1067,8 +1075,9 @@ $("confirmCheckoutBtn").addEventListener("click", async () => {
   if (!S.cart.length) return;
   if (S.cart.some((l) => !l.dept)) return toast("Choose a department for every item.", true);
   const btn = $("confirmCheckoutBtn"); btn.disabled = true;
+  // No unit_cost: the database fills in the item's cost as it stands now (apparel.tx_cost_handling), not the one this page loaded earlier.
   const rows = S.cart.map((l) => ({
-    type: "checkout", item_id: l.item.id, qty_change: -l.qty, unit_cost: l.item.unit_cost,
+    type: "checkout", item_id: l.item.id, qty_change: -l.qty,
     department_id: l.dept, performed_by: checkoutUserId(),
     notes: $("coNotes").value.trim() || null
   }));
@@ -2705,13 +2714,13 @@ function openSetActive(u) {
    ========================================================= */
 // Each commit stamps <meta name="app-version">. The page checks the live copy on start, whenever the app comes back to
 // the front, and every 5 minutes while it's showing. When the version differs it reloads straight away, unless
-// someone is mid-task (items in the check out cart, a dialog open, the scanner on, or typing), in which case it shows
+// someone is mid-task (items in the check out cart, a dialog open, a scanner on, a packing slip or invoice under review, or typing), in which case it shows
 // a "Reload" bar and reloads by itself the next time the app is put away and reopened with nothing in progress.
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "";
 const RELOADED_FOR_KEY = "apparel.reloadedFor";
 let newVersion = "";
 const arrivedFor = new URLSearchParams(location.search).get("v") || "";   // set when this page is itself the result of an update reload
-const midTask = () => !!(S.cart.length || S.scanner || S.rcvItem || $("modalBg").classList.contains("open") ||
+const midTask = () => !!(S.cart.length || S.scanner || S.invScanner || S.rcvItem || S.ai || $("modalBg").classList.contains("open") ||
   (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.value));
 function reloadToNewVersion() {
   try { sessionStorage.setItem(RELOADED_FOR_KEY, newVersion); } catch (_) {}

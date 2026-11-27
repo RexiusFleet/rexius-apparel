@@ -6,8 +6,11 @@
 -- earlier apparel_schema.sql + addendum.
 -- ============================================================
 
--- Remove the earlier separate-schema version (it held no data yet).
-drop schema if exists apparel cascade;
+-- This file once began by dropping the "apparel" schema, to clear an
+-- early empty version. The app's data has lived in that schema since
+-- 20261027170000_move_to_apparel_schema.sql, so the line was removed:
+-- run on the live project it would have deleted everything.
+-- For a NEW project only. Never run this file on the live one.
 
 -- ------------------------------------------------------------
 -- Reference tables
